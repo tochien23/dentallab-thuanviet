@@ -11,13 +11,27 @@ import {
 import { CLINIC_INFO, SERVICE_OPTIONS } from "@/lib/constants";
 import { consultationService } from "@/services/consultationService";
 
+interface ConsultationFormProps {
+  initialService?: string;
+  badge?: string;
+  title?: string;
+  subtitle?: string;
+  id?: string;
+}
+
 /**
  * Form đăng ký tư vấn
  * - Validation bằng Zod + React Hook Form
  * - Trạng thái: idle → submitting → success / error
  * - Tích hợp lưu vào Supabase (hoặc mock nếu chưa cấu hình DB)
  */
-export default function ConsultationForm() {
+export default function ConsultationForm({
+  initialService = "",
+  badge = "Liên hệ",
+  title = "Đăng ký tư vấn miễn phí",
+  subtitle = "Để lại thông tin, đội ngũ bác sĩ và kỹ thuật viên của SmileLab Dental sẽ liên hệ tư vấn chi tiết giải pháp phục hình phù hợp nhất cho bạn.",
+  id = "contact",
+}: ConsultationFormProps = {}) {
   const [submitStatus, setSubmitStatus] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
@@ -33,7 +47,7 @@ export default function ConsultationForm() {
       fullName: "",
       phone: "",
       email: "",
-      service: "",
+      service: initialService,
       message: "",
     },
   });
@@ -56,7 +70,7 @@ export default function ConsultationForm() {
   // Hiển thị thông báo thành công
   if (submitStatus === "success") {
     return (
-      <section id="contact" className="bg-white py-16 lg:py-24">
+      <section id={id} className="bg-white py-16 lg:py-24">
         <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
           <div className="rounded-2xl border border-mint-200 bg-mint-50 p-8 lg:p-12">
             <CheckCircle className="mx-auto h-16 w-16 text-mint-500" />
@@ -81,21 +95,19 @@ export default function ConsultationForm() {
   }
 
   return (
-    <section id="contact" className="bg-white py-16 lg:py-24">
+    <section id={id} className="bg-white py-16 lg:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
           {/* Left: text */}
           <div>
             <span className="text-sm font-semibold uppercase tracking-wider text-mint-600">
-              Liên hệ
+              {badge}
             </span>
             <h2 className="mt-2 text-2xl font-bold text-navy-950 sm:text-3xl lg:text-4xl">
-              Đăng ký tư vấn miễn phí
+              {title}
             </h2>
             <p className="mt-4 text-base leading-relaxed text-slate-600 lg:text-lg">
-              Để lại thông tin, đội ngũ bác sĩ và kỹ thuật viên của SmileLab
-              Dental sẽ liên hệ tư vấn chi tiết giải pháp phục hình phù hợp
-              nhất cho bạn.
+              {subtitle}
             </p>
 
             <div className="mt-8 space-y-4">

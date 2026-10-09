@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, X, Phone } from "lucide-react";
 import { CLINIC_INFO, NAV_ITEMS } from "@/lib/constants";
 
@@ -9,10 +10,16 @@ import { CLINIC_INFO, NAV_ITEMS } from "@/lib/constants";
  * Header chính của website SmileLab Dental
  * - Responsive: mobile hamburger drawer, desktop horizontal nav
  * - Sticky + backdrop blur khi cuộn trang
+ * - Tự động hiển thị nền sáng rõ ràng trên các trang con (/dich-vu, /bao-hanh, v.v.)
  */
 export default function Header() {
+  const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  const isHomePage = pathname === "/";
+  // Khi không ở trang chủ, hoặc khi cuộn trang, luôn hiển thị nền solid sáng rõ nét
+  const isSolid = isScrolled || !isHomePage;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -30,7 +37,7 @@ export default function Header() {
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
+        isSolid
           ? "bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100"
           : "bg-transparent"
       }`}
@@ -45,7 +52,7 @@ export default function Header() {
             <div>
               <span
                 className={`text-lg font-bold transition-colors lg:text-xl ${
-                  isScrolled ? "text-navy-900" : "text-white"
+                  isSolid ? "text-navy-900" : "text-white"
                 }`}
               >
                 {CLINIC_INFO.name}
@@ -55,19 +62,34 @@ export default function Header() {
 
           {/* Desktop Navigation */}
           <nav className="hidden items-center gap-1 lg:flex">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isScrolled
-                    ? "text-slate-600 hover:bg-slate-50 hover:text-navy-800"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : item.href === "/dich-vu"
+                  ? pathname.startsWith("/dich-vu")
+                  : item.href === "/bao-hanh"
+                  ? pathname.startsWith("/bao-hanh")
+                  : false;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? isSolid
+                        ? "bg-mint-50 text-mint-700 font-semibold"
+                        : "bg-white/20 text-white font-semibold"
+                      : isSolid
+                      ? "text-slate-600 hover:bg-slate-50 hover:text-navy-800"
+                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* Desktop CTA */}
@@ -75,14 +97,14 @@ export default function Header() {
             <a
               href={`tel:${CLINIC_INFO.phone.replace(/\s/g, "")}`}
               className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                isScrolled ? "text-navy-800" : "text-white/90"
+                isSolid ? "text-navy-800" : "text-white/90"
               }`}
             >
               <Phone className="h-4 w-4" />
               {CLINIC_INFO.phone}
             </a>
             <a
-              href="#contact"
+              href="/#contact"
               className="rounded-lg bg-mint-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-mint-600 hover:shadow-md"
             >
               Đặt lịch tư vấn
@@ -94,7 +116,7 @@ export default function Header() {
             type="button"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className={`rounded-lg p-2 transition-colors lg:hidden ${
-              isScrolled
+              isSolid
                 ? "text-slate-700 hover:bg-slate-100"
                 : "text-white hover:bg-white/10"
             }`}
@@ -132,7 +154,7 @@ export default function Header() {
                 {CLINIC_INFO.phone}
               </a>
               <a
-                href="#contact"
+                href="/#contact"
                 onClick={handleNavClick}
                 className="mt-2 block rounded-lg bg-mint-500 px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-mint-600"
               >

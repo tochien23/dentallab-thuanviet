@@ -11,7 +11,7 @@ export default function Footer() {
   return (
     <footer className="bg-navy-950 text-slate-400">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-12">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <div className="flex items-center gap-2">
@@ -26,6 +26,55 @@ export default function Footer() {
               {CLINIC_INFO.slogan}. Phục hình răng sứ cao cấp với hệ thống bảo
               hành điện tử minh bạch.
             </p>
+          </div>
+
+          {/* Dịch vụ */}
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-wider text-white">
+              Dịch vụ
+            </h4>
+            <ul className="mt-4 space-y-2 text-sm">
+              <li>
+                <Link
+                  href="/dich-vu/zirconia"
+                  className="transition-colors hover:text-white hover:underline"
+                >
+                  Răng sứ Zirconia
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/dich-vu/rang-su-kim-loai"
+                  className="transition-colors hover:text-white hover:underline"
+                >
+                  Răng sứ Kim Loại
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/dich-vu/veneer"
+                  className="transition-colors hover:text-white hover:underline"
+                >
+                  Mặt dán sứ Veneer
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/dich-vu/implant"
+                  className="transition-colors hover:text-white hover:underline"
+                >
+                  Phục hình trên Implant
+                </Link>
+              </li>
+              <li className="pt-1">
+                <Link
+                  href="/dich-vu"
+                  className="font-medium text-mint-400 transition-colors hover:text-mint-300"
+                >
+                  → Xem tất cả dịch vụ
+                </Link>
+              </li>
+            </ul>
           </div>
 
           {/* Liên hệ */}

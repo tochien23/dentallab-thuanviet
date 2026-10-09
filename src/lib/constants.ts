@@ -26,6 +26,7 @@ export const CLINIC_INFO = {
 export const SERVICES = [
   {
     id: "zirconia",
+    slug: "zirconia",
     name: "Răng sứ Zirconia",
     description:
       "Phôi sứ Zirconia cao cấp, độ bền vượt trội, thẩm mỹ tự nhiên. Phù hợp cho phục hình cầu răng, mão răng toàn hàm với tuổi thọ lên đến 20 năm.",
@@ -33,13 +34,15 @@ export const SERVICES = [
   },
   {
     id: "emax",
-    name: "Răng sứ E.max",
+    slug: "rang-su-kim-loai",
+    name: "Răng sứ Kim Loại",
     description:
-      "Sứ thủy tinh Lithium Disilicate của Ivoclar, trong suốt gần như răng thật. Lựa chọn hàng đầu cho răng cửa và vùng thẩm mỹ cao.",
+      "Giải pháp phục hồi chức năng ăn nhai vững chắc và kinh tế cho các trường hợp mất răng hoặc răng hàm hư tổn nặng, cấu trúc khung sườn kim loại y tế phủ men sứ bền bỉ.",
     icon: "Sparkles" as const,
   },
   {
     id: "veneer",
+    slug: "veneer",
     name: "Mặt dán sứ Veneer",
     description:
       "Lớp sứ siêu mỏng dán trực tiếp lên bề mặt răng, bảo tồn mô răng tối đa. Giải pháp thẩm mỹ nhanh chóng, nhẹ nhàng cho nụ cười hoàn hảo.",
@@ -47,6 +50,7 @@ export const SERVICES = [
   },
   {
     id: "implant",
+    slug: "implant",
     name: "Phục hình trên Implant",
     description:
       "Phục hình răng sứ trên trụ Implant Titanium hoặc Zirconia. Tái tạo răng mất hoàn chỉnh, ổn định lâu dài, không ảnh hưởng răng lân cận.",
@@ -119,7 +123,7 @@ export const WARRANTY_BENEFITS = [
 /** Danh sách dịch vụ cho form dropdown */
 export const SERVICE_OPTIONS = [
   "Răng sứ Zirconia",
-  "Răng sứ E.max",
+  "Răng sứ Kim Loại",
   "Mặt dán sứ Veneer",
   "Phục hình trên Implant",
   "Tư vấn tổng quát",
@@ -128,10 +132,10 @@ export const SERVICE_OPTIONS = [
 
 /** Menu điều hướng */
 export const NAV_ITEMS = [
-  { label: "Trang chủ", href: "#hero" },
-  { label: "Dịch vụ", href: "#services" },
-  { label: "Quy trình", href: "#process" },
-  { label: "Bảo hành", href: "#warranty-benefits" },
+  { label: "Trang chủ", href: "/" },
+  { label: "Dịch vụ", href: "/dich-vu" },
+  { label: "Quy trình", href: "/#process" },
+  { label: "Bảo hành", href: "/#warranty-benefits" },
   { label: "Tra cứu bảo hành", href: "/bao-hanh" },
-  { label: "Liên hệ", href: "#contact" },
+  { label: "Liên hệ", href: "/#contact" },
 ] as const;
