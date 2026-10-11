@@ -1,54 +1,48 @@
-import { getDbClient } from "./dbHelper";
+import { isFirebaseConfigured, db } from "@/lib/firebase/client";
 import { Patient } from "@/types/database.types";
 import { PatientFormValues } from "@/lib/validations/patient";
 import { MOCK_PATIENTS } from "./mockData";
 
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes("placeholder-project"));
-}
-
-// In-memory list cho mock mode để hỗ trợ các thao tác CRUD ngay tức thì khi offline
 let localPatients: Patient[] = [...MOCK_PATIENTS];
 
 export const patientService = {
   /**
-   * Lấy danh sách bệnh nhân với tìm kiếm theo tên, sđt hoặc mã bệnh nhân
+   * Lấy danh sách bệnh nhân
    */
   async getAllPatients(query?: string): Promise<Patient[]> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        let queryBuilder = supabase
-          .from("patients")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { collection, getDocs, orderBy, query: fbQuery } = await import("firebase/firestore");
+
+        const q = fbQuery(collection(db, "patients"), orderBy("created_at", "desc"));
+        const snapshot = await getDocs(q);
+        let results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Patient));
 
         if (query && query.trim()) {
-          const q = `%${query.trim()}%`;
-          queryBuilder = queryBuilder.or(
-            `full_name.ilike.${q},phone.ilike.${q},patient_code.ilike.${q}`
+          const qLower = query.trim().toLowerCase();
+          results = results.filter(
+            (p) =>
+              p.full_name.toLowerCase().includes(qLower) ||
+              p.phone.includes(qLower) ||
+              p.patient_code.toLowerCase().includes(qLower) ||
+              (p.address && p.address.toLowerCase().includes(qLower))
           );
         }
 
-        const { data, error } = await queryBuilder;
-        if (!error && data) {
-          return data as Patient[];
-        }
+        return results;
       } catch (err) {
-        console.warn("[patientService] Lỗi khi lấy danh sách bệnh nhân từ Supabase:", err);
+        console.warn("[patientService] Lỗi khi lấy danh sách bệnh nhân:", err);
       }
     }
 
-    // Mock search
     if (query && query.trim()) {
       const q = query.trim().toLowerCase();
       return localPatients.filter(
         (p) =>
           p.full_name.toLowerCase().includes(q) ||
           p.phone.includes(q) ||
-          p.patient_code.toLowerCase().includes(q)
+          p.patient_code.toLowerCase().includes(q) ||
+          (p.address && p.address.toLowerCase().includes(q))
       );
     }
 
@@ -59,18 +53,11 @@ export const patientService = {
    * Lấy chi tiết bệnh nhân theo ID
    */
   async getPatientById(id: string): Promise<Patient | null> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("patients")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-        if (!error && data) {
-          return data as Patient;
-        }
+        const { doc, getDoc } = await import("firebase/firestore");
+        const snap = await getDoc(doc(db, "patients", id));
+        if (snap.exists()) return { id: snap.id, ...snap.data() } as Patient;
       } catch (err) {
         console.warn("[patientService] Lỗi khi lấy thông tin bệnh nhân:", err);
       }
@@ -85,39 +72,46 @@ export const patientService = {
   async createPatient(
     values: PatientFormValues
   ): Promise<{ success: boolean; data?: Patient; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("patients")
-          .insert(values)
-          .select()
-          .single();
+        const { collection, addDoc, query: fbQuery, where, getDocs } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
+        // Kiểm tra trùng patient_code
+        const q = fbQuery(collection(db, "patients"), where("patient_code", "==", values.patient_code));
+        const existing = await getDocs(q);
+        if (!existing.empty) {
+          return { success: false, error: "Mã bệnh nhân này đã tồn tại trong hệ thống." };
         }
-        return { success: true, data: data as Patient };
+
+        const payload = {
+          ...values,
+          address: values.address || null,
+          date_of_birth: values.date_of_birth || null,
+          gender: values.gender || null,
+          notes: values.notes || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const docRef = await addDoc(collection(db, "patients"), payload);
+        return { success: true, data: { id: docRef.id, ...payload } as Patient };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi lưu bệnh nhân";
         return { success: false, error: message };
       }
     }
 
-    // Kiểm tra trùng mã bệnh nhân trong local
     const exists = localPatients.some(
       (p) => p.patient_code.toLowerCase() === values.patient_code.toLowerCase()
     );
-    if (exists) {
-      return { success: false, error: "Mã bệnh nhân này đã tồn tại trong hệ thống." };
-    }
+    if (exists) return { success: false, error: "Mã bệnh nhân này đã tồn tại trong hệ thống." };
 
     const mockNew: Patient = {
       id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       patient_code: values.patient_code,
       full_name: values.full_name,
       phone: values.phone,
-      email: values.email || null,
+      address: values.address || null,
       date_of_birth: values.date_of_birth || null,
       gender: values.gender || null,
       notes: values.notes || null,
@@ -136,20 +130,22 @@ export const patientService = {
     id: string,
     values: PatientFormValues
   ): Promise<{ success: boolean; data?: Patient; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("patients")
-          .update(values)
-          .eq("id", id)
-          .select()
-          .single();
+        const { doc, updateDoc, getDoc } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true, data: data as Patient };
+        const updatePayload = {
+          ...values,
+          address: values.address || null,
+          date_of_birth: values.date_of_birth || null,
+          gender: values.gender || null,
+          notes: values.notes || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        await updateDoc(doc(db, "patients", id), updatePayload);
+        const snap = await getDoc(doc(db, "patients", id));
+        return { success: true, data: { id: snap.id, ...snap.data() } as Patient };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi cập nhật bệnh nhân";
         return { success: false, error: message };
@@ -157,14 +153,12 @@ export const patientService = {
     }
 
     const index = localPatients.findIndex((p) => p.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy hồ sơ bệnh nhân cần sửa." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy hồ sơ bệnh nhân cần sửa." };
 
     const updated: Patient = {
       ...localPatients[index],
       ...values,
-      email: values.email || null,
+      address: values.address || null,
       date_of_birth: values.date_of_birth || null,
       gender: values.gender || null,
       notes: values.notes || null,
@@ -179,13 +173,10 @@ export const patientService = {
    * Xóa bệnh nhân
    */
   async deletePatient(id: string): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { error } = await supabase.from("patients").delete().eq("id", id);
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "patients", id));
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi xóa bệnh nhân";

@@ -59,6 +59,7 @@ export interface ServiceDetail {
     prepInvasiveness: string; // Mức độ xâm lấn/mài răng
     idealFor: string;
   };
+  image: string;
 }
 
 export const DENTAL_SERVICES_DETAIL: ServiceDetail[] = [
@@ -77,6 +78,7 @@ export const DENTAL_SERVICES_DETAIL: ServiceDetail[] = [
     priceRange: "Từ 3.500.000đ – 6.500.000đ / răng",
     estimatedTime: "2 – 3 buổi hẹn (2 – 4 ngày)",
     matchedServiceOption: "Răng sứ Zirconia",
+    image: "/images/services/zirconia.jpg",
     overview:
       "Răng sứ Zirconia là dòng phục hình toàn sứ đỉnh cao được sản xuất 100% từ khối sứ Zirconium Dioxide (ZrO2) nguyên chất thông qua công nghệ tiện kỹ thuật số CAD/CAM hiện đại. Sở hữu độ chịu lực uốn gãy vượt trội lên đến 1560 MPa kết hợp cùng khả năng tương thích sinh học hoàn hảo, răng sứ Zirconia giải quyết triệt để vấn đề thâm đen viền nướu, hôi miệng hay kích ứng kim loại của các thế hệ răng sứ truyền thống, mang lại nụ cười rạng rỡ và tuổi thọ ăn nhai bền vững suốt nhiều thập kỷ.",
     highlightPoints: [
@@ -234,6 +236,7 @@ export const DENTAL_SERVICES_DETAIL: ServiceDetail[] = [
     priceRange: "Từ 1.200.000đ – 2.500.000đ / răng",
     estimatedTime: "2 buổi hẹn (2 – 3 ngày)",
     matchedServiceOption: "Răng sứ Kim Loại",
+    image: "/images/services/metal-ceramic.webp",
     overview:
       "Răng sứ kim loại là phương pháp phục hình truyền thống lâu đời nhưng vẫn giữ vị thế quan trọng nhờ khả năng chịu lực ăn nhai tốt và mức chi phí vô cùng phải chăng. Sản phẩm có cấu trúc kết hợp: khung sườn bên trong đúc từ hợp kim y tế (Co-Cr, Ni-Cr hoặc Titanium) chịu lực tải trọng cao, bên ngoài được phủ nhiều lớp men sứ Ceramco thẩm mỹ cùng màu răng thật. Đây là giải pháp phục hồi tối ưu cho vùng răng hàm phía trong chịu lực nhai chính của khách hàng có ngân sách vừa phải.",
     highlightPoints: [
@@ -373,6 +376,7 @@ export const DENTAL_SERVICES_DETAIL: ServiceDetail[] = [
     priceRange: "Từ 6.000.000đ – 10.000.000đ / răng",
     estimatedTime: "2 – 3 buổi hẹn (3 – 5 ngày)",
     matchedServiceOption: "Mặt dán sứ Veneer",
+    image: "/images/services/veneer.jpg",
     overview:
       "Mặt dán sứ Veneer là đỉnh cao của nha khoa thẩm mỹ bảo tồn hiện đại trên thế giới. Với độ siêu mỏng chỉ từ 0.2mm – 0.5mm (tương đương độ mỏng của kính áp tròng), miếng dán sứ được chế tác tinh xảo từ khối sứ thủy tinh Lithium Disilicate và dán cố định lên mặt ngoài của răng thật bằng keo dán sinh học chuyên dụng. Phương pháp này chỉ xử lý một lớp men răng cực mỏng hoặc thậm chí không cần mài, bảo tồn 100% tủy sống và giữ nguyên khớp cắn nguyên bản, đem lại nụ cười rạng ngời tự nhiên.",
     highlightPoints: [
@@ -514,6 +518,7 @@ export const DENTAL_SERVICES_DETAIL: ServiceDetail[] = [
     priceRange: "Từ 4.000.000đ – 10.000.000đ / mão phục hình",
     estimatedTime: "2 – 3 buổi hẹn sau khi trụ tích hợp",
     matchedServiceOption: "Phục hình trên Implant",
+    image: "/images/services/implant.webp",
     overview:
       "Phục hình răng sứ trên Implant là giai đoạn kết thúc quan trọng nhất trong kỹ thuật trồng răng Implant hiện đại. Sau khi trụ Implant Titanium đã tích hợp sinh học vững chắc vào xương hàm, bác sĩ sẽ gắn kết nối trụ cầu Abutment và lắp đặt mão răng sứ được cá nhân hóa riêng biệt. Nhờ hệ thống CAD/CAM kỹ thuật số tại SmileLab, mão răng được thiết kế sát khít đường viền nướu sinh lý, tái lập khả năng ăn nhai 100% như răng thật mà không cần mài bất kỳ răng lân cận nào.",
     highlightPoints: [

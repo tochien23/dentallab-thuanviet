@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+import { auth, isFirebaseConfigured } from "@/lib/firebase/client";
 import { Profile } from "@/types/database.types";
 
 export interface AdminUser {
@@ -15,19 +15,13 @@ const DEMO_ADMIN: AdminUser = {
   role: "admin",
 };
 
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes("placeholder-project"));
-}
-
 /**
  * Service xác thực Quản trị viên
- * Hỗ trợ đồng thời Supabase Auth thực tế và chế độ Demo Auth khi chạy local/offline
+ * Hỗ trợ Firebase Auth và chế độ Demo khi chưa cấu hình
  */
 export const authService = {
   /**
-   * Đăng nhập quản trị viên
+   * Đăng nhập quản trị viên bằng Email/Password
    */
   async login(
     email: string,
@@ -35,38 +29,33 @@ export const authService = {
   ): Promise<{ success: boolean; user?: AdminUser; error?: string }> {
     const cleanEmail = email.trim().toLowerCase();
 
-    // 1. Thử đăng nhập qua Supabase Auth nếu đã cấu hình
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
+        const { signInWithEmailAndPassword } = await import("firebase/auth");
+        const { db } = await import("@/lib/firebase/client");
+        const { doc, getDoc } = await import("firebase/firestore");
 
-        if (!error && data.user) {
-          // Lấy profile phân quyền từ public.profiles
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", data.user.id)
-            .single();
+        const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        const fbUser = credential.user;
 
-          const adminUser: AdminUser = {
-            id: data.user.id,
-            email: data.user.email || cleanEmail,
-            full_name: (profile as Profile)?.full_name || "Quản trị viên",
-            role: ((profile as Profile)?.role as "admin") || "admin",
-          };
+        // Lấy profile từ Firestore collection "profiles"
+        const profileSnap = await getDoc(doc(db, "profiles", fbUser.uid));
+        const profile = profileSnap.exists() ? (profileSnap.data() as Profile) : null;
 
-          if (typeof document !== "undefined") {
-            document.cookie = "demo_admin_auth=true; path=/; max-age=86400; SameSite=Lax";
-          }
+        const adminUser: AdminUser = {
+          id: fbUser.uid,
+          email: fbUser.email || cleanEmail,
+          full_name: profile?.full_name || fbUser.displayName || "Quản trị viên",
+          role: (profile?.role as AdminUser["role"]) || "admin",
+        };
 
-          return { success: true, user: adminUser };
+        if (typeof document !== "undefined") {
+          document.cookie = "demo_admin_auth=true; path=/; max-age=86400; SameSite=Lax";
         }
 
-        // Nếu Supabase trả về lỗi nhưng đang nhập tài khoản demo chuẩn
+        return { success: true, user: adminUser };
+      } catch (err: unknown) {
+        // Nếu Firebase lỗi nhưng đang dùng tài khoản demo
         if (
           cleanEmail === DEMO_ADMIN.email &&
           (password === "Admin@123456" || password === "admin123")
@@ -77,16 +66,21 @@ export const authService = {
           return { success: true, user: DEMO_ADMIN };
         }
 
-        return {
-          success: false,
-          error: error?.message || "Email hoặc mật khẩu không chính xác.",
-        };
-      } catch (err: unknown) {
-        console.warn("[authService] Ngoại lệ khi đăng nhập Supabase:", err);
+        const message =
+          err instanceof Error ? err.message : "Email hoặc mật khẩu không chính xác.";
+        const friendlyMsg = message.includes("invalid-credential") || message.includes("wrong-password")
+          ? "Email hoặc mật khẩu không chính xác."
+          : message.includes("user-not-found")
+          ? "Tài khoản không tồn tại."
+          : message.includes("too-many-requests")
+          ? "Đăng nhập quá nhiều lần. Vui lòng thử lại sau."
+          : message;
+
+        return { success: false, error: friendlyMsg };
       }
     }
 
-    // 2. Chế độ Mock / Demo Auth khi chưa kết nối Supabase
+    // Chế độ Mock / Demo Auth
     if (
       cleanEmail === DEMO_ADMIN.email &&
       (password === "Admin@123456" || password === "admin123")
@@ -104,47 +98,44 @@ export const authService = {
   },
 
   /**
-   * Đăng xuất quản trị viên
+   * Đăng xuất
    */
   async logout(): Promise<void> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        await supabase.auth.signOut();
+        const { signOut } = await import("firebase/auth");
+        await signOut(auth);
       } catch (err) {
-        console.warn("[authService] Lỗi đăng xuất Supabase:", err);
+        console.warn("[authService] Lỗi đăng xuất Firebase:", err);
       }
     }
 
-    // Xóa cookie demo
     if (typeof document !== "undefined") {
-      document.cookie = "demo_admin_auth=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie =
+        "demo_admin_auth=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }
   },
 
   /**
-   * Lấy thông tin user đăng nhập hiện tại
+   * Lấy thông tin user đang đăng nhập
    */
   async getCurrentUser(): Promise<AdminUser | null> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const currentUser = auth.currentUser;
 
-        if (user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .single();
+        if (currentUser) {
+          const { db } = await import("@/lib/firebase/client");
+          const { doc, getDoc } = await import("firebase/firestore");
+
+          const profileSnap = await getDoc(doc(db, "profiles", currentUser.uid));
+          const profile = profileSnap.exists() ? (profileSnap.data() as Profile) : null;
 
           return {
-            id: user.id,
-            email: user.email || "",
-            full_name: (profile as Profile)?.full_name || "Quản trị viên",
-            role: ((profile as Profile)?.role as "admin") || "admin",
+            id: currentUser.uid,
+            email: currentUser.email || "",
+            full_name: profile?.full_name || currentUser.displayName || "Quản trị viên",
+            role: (profile?.role as AdminUser["role"]) || "admin",
           };
         }
       } catch (err) {
@@ -161,36 +152,23 @@ export const authService = {
   },
 
   /**
-   * Cập nhật thông tin hồ sơ của tài khoản đang đăng nhập
+   * Cập nhật họ tên hồ sơ
    */
-  async updateProfile(
-    fullName: string
-  ): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+  async updateProfile(fullName: string): Promise<{ success: boolean; error?: string }> {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const { updateProfile: fbUpdateProfile } = await import("firebase/auth");
+        const { db } = await import("@/lib/firebase/client");
+        const { doc, updateDoc } = await import("firebase/firestore");
 
-        if (!user) {
-          return { success: false, error: "Chưa đăng nhập." };
-        }
+        const currentUser = auth.currentUser;
+        if (!currentUser) return { success: false, error: "Chưa đăng nhập." };
 
-        const { error: profErr } = await supabase
-          .from("profiles")
-          .update({
-            full_name: fullName.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id);
+        await fbUpdateProfile(currentUser, { displayName: fullName.trim() });
 
-        if (profErr) {
-          return { success: false, error: profErr.message };
-        }
-
-        await supabase.auth.updateUser({
-          data: { full_name: fullName.trim() },
+        await updateDoc(doc(db, "profiles", currentUser.uid), {
+          full_name: fullName.trim(),
+          updated_at: new Date().toISOString(),
         });
 
         return { success: true };
@@ -200,32 +178,25 @@ export const authService = {
       }
     }
 
-    // Demo mode
     DEMO_ADMIN.full_name = fullName;
     return { success: true };
   },
 
   /**
-   * Đổi mật khẩu tài khoản đang đăng nhập
+   * Đổi mật khẩu
    */
-  async changePassword(
-    newPassword: string
-  ): Promise<{ success: boolean; error?: string }> {
+  async changePassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
     if (newPassword.length < 6) {
       return { success: false, error: "Mật khẩu mới phải từ 6 ký tự trở lên." };
     }
 
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        const { error } = await supabase.auth.updateUser({
-          password: newPassword,
-        });
+        const { updatePassword } = await import("firebase/auth");
+        const currentUser = auth.currentUser;
+        if (!currentUser) return { success: false, error: "Chưa đăng nhập." };
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
+        await updatePassword(currentUser, newPassword);
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Đã có lỗi xảy ra";
@@ -233,7 +204,6 @@ export const authService = {
       }
     }
 
-    // Demo mode
     return { success: true };
   },
 };

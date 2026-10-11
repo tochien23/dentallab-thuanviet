@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Award, Microscope, Factory, ShieldCheck } from "lucide-react";
 
 /**
@@ -51,8 +52,59 @@ export default function AboutSection() {
           </p>
         </div>
 
+        {/* Visual imagery showcase */}
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:gap-8 hidden">
+          <div className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-lg">
+            <div className="relative h-64 overflow-hidden sm:h-72">
+              <Image
+                src="/images/about/lab-cadcam.jpg"
+                alt="Xưởng chế tác SmileLab CAD/CAM Precision Digital Dentistry"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-navy-950/80 via-transparent to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4">
+                <span className="rounded-md bg-mint-500 px-2.5 py-1 text-xs font-semibold text-white">
+                  SmileLab Digital Lab
+                </span>
+                <h3 className="mt-2 text-base font-bold text-white sm:text-lg">
+                  Xưởng Chế Tác CAD/CAM 5 Trục Chuẩn Micromet
+                </h3>
+                <p className="mt-1 text-xs text-slate-300">
+                  Phay tiện phôi sứ nguyên khối trực tiếp, đảm bảo độ sát khít viền nướu tuyệt đối.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-lg">
+            <div className="relative h-64 overflow-hidden sm:h-72">
+              <Image
+                src="/images/about/clinic-consultation.jpg"
+                alt="Bác sĩ SmileLab Dental tư vấn nụ cười với khách hàng"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-navy-950/80 via-transparent to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4">
+                <span className="rounded-md bg-navy-800 px-2.5 py-1 text-xs font-semibold text-white">
+                  SmileLab Clinic
+                </span>
+                <h3 className="mt-2 text-base font-bold text-white sm:text-lg">
+                  Tư Vấn & Thăm Khám Chuẩn Y Khoa
+                </h3>
+                <p className="mt-1 text-xs text-slate-300">
+                  Chụp phim CT 3D, mô phỏng nụ cười cá nhân hóa và đồng hành cùng khách hàng suốt liệu trình.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Strengths grid */}
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:mt-16 lg:grid-cols-4 lg:gap-8">
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
           {strengths.map((item) => (
             <div
               key={item.title}

@@ -10,7 +10,7 @@ import {
   Edit2,
   Trash2,
   Phone,
-  Mail,
+  MapPin,
   X,
 } from "lucide-react";
 import AdminLayoutWrapper from "@/components/admin/AdminLayoutWrapper";
@@ -87,7 +87,7 @@ export default function PatientsAdminPage() {
       patient_code: `BN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       full_name: "",
       phone: "",
-      email: "",
+      address: "",
       date_of_birth: "",
       gender: "male",
       notes: "",
@@ -101,7 +101,7 @@ export default function PatientsAdminPage() {
       patient_code: p.patient_code,
       full_name: p.full_name,
       phone: p.phone,
-      email: p.email || "",
+      address: p.address || "",
       date_of_birth: p.date_of_birth || "",
       gender: p.gender || "male",
       notes: p.notes || "",
@@ -167,7 +167,7 @@ export default function PatientsAdminPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tên, SĐT hoặc mã bệnh nhân..."
+              placeholder="Tìm theo tên, SĐT, mã bệnh nhân hoặc địa chỉ..."
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-navy-950 placeholder-slate-400 focus:border-mint-500 focus:ring-2 focus:ring-mint-500/20 focus:outline-none transition-all"
             />
           </form>
@@ -200,7 +200,7 @@ export default function PatientsAdminPage() {
                   <tr>
                     <th className="py-3.5 px-4 sm:px-6">Mã & Họ tên</th>
                     <th className="py-3.5 px-4">Số điện thoại</th>
-                    <th className="py-3.5 px-4 hidden md:table-cell">Email</th>
+                    <th className="py-3.5 px-4 hidden md:table-cell">Địa chỉ</th>
                     <th className="py-3.5 px-4 hidden lg:table-cell">Ngày sinh / Giới tính</th>
                     <th className="py-3.5 px-4 hidden sm:table-cell">Ghi chú</th>
                     <th className="py-3.5 px-4 text-right">Thao tác</th>
@@ -227,10 +227,10 @@ export default function PatientsAdminPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4 hidden md:table-cell text-xs text-slate-500">
-                        {p.email ? (
-                          <div className="flex items-center gap-1.5">
-                            <Mail className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{p.email}</span>
+                        {p.address ? (
+                          <div className="flex items-center gap-1.5 max-w-[220px]" title={p.address}>
+                            <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{p.address}</span>
                           </div>
                         ) : (
                           <span className="text-slate-300">-</span>
@@ -350,15 +350,18 @@ export default function PatientsAdminPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-navy-900">Email</label>
-                    <input
-                      type="email"
-                      placeholder="email@example.com"
-                      {...register("email")}
-                      className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-navy-950 focus:border-mint-500 focus:outline-none"
-                    />
-                    {errors.email && (
-                      <p className="text-[11px] text-rose-500 mt-1">{errors.email.message}</p>
+                    <label className="block text-xs font-semibold text-navy-900">Địa chỉ liên hệ</label>
+                    <div className="relative mt-1">
+                      <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Số nhà, Quận/Huyện, Tỉnh/TP"
+                        {...register("address")}
+                        className="block w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-sm text-navy-950 focus:border-mint-500 focus:outline-none"
+                      />
+                    </div>
+                    {errors.address && (
+                      <p className="text-[11px] text-rose-500 mt-1">{errors.address.message}</p>
                     )}
                   </div>
                 </div>

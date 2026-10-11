@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import {
   ShieldCheck,
@@ -180,25 +181,42 @@ export default async function ServiceDetailPage({ params }: Props) {
 
               {/* Right Column: Visual Feature Box */}
               <div className="lg:col-span-4">
-                <div className="relative rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-8 backdrop-blur-md shadow-2xl">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-mint-500/20 text-mint-400 shadow-inner">
-                    <IconComponent className="h-9 w-9" />
-                  </div>
-                  <h3 className="mt-6 text-xl font-bold text-white">
-                    Cam kết chuẩn Lab CAD/CAM
-                  </h3>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-300">
-                    Sản phẩm được gia công tại Labo SmileLab với công nghệ phay tiện 5 trục, đảm bảo độ sát khít đường hoàn tất đạt chuẩn y khoa.
-                  </p>
-
-                  <div className="mt-6 space-y-3 border-t border-white/10 pt-6">
-                    <div className="flex items-center gap-2.5 text-xs text-slate-200">
-                      <BadgeCheck className="h-4 w-4 text-mint-400 shrink-0" />
-                      <span>Tra cứu mã QR tức thì</span>
+                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md shadow-2xl">
+                  {/* Photo showcase */}
+                  <div className="relative h-64 sm:h-72 overflow-hidden">
+                    <Image
+                      src={service.image}
+                      alt={service.name}
+                      fill
+                      priority
+                      sizes="(max-width: 1024px) 100vw, 33vw"
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-950/20 to-transparent" />
+                    <div className="absolute top-4 right-4">
+                      <span className="rounded-full bg-navy-950/80 backdrop-blur-md px-3 py-1 text-xs font-semibold text-mint-400 border border-mint-500/30">
+                        SmileLab CAD/CAM
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2.5 text-xs text-slate-200">
-                      <BadgeCheck className="h-4 w-4 text-mint-400 shrink-0" />
-                      <span>Thử răng & cân chỉnh khớp cắn miễn phí</span>
+                  </div>
+
+                  <div className="p-6">
+                    <h3 className="text-lg font-bold text-white">
+                      Cam kết chuẩn Lab CAD/CAM
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
+                      Sản phẩm được gia công tại Labo SmileLab với công nghệ phay tiện 5 trục, đảm bảo độ sát khít đường hoàn tất đạt chuẩn y khoa.
+                    </p>
+
+                    <div className="mt-5 space-y-2.5 border-t border-white/10 pt-5">
+                      <div className="flex items-center gap-2.5 text-xs text-slate-200">
+                        <BadgeCheck className="h-4 w-4 text-mint-400 shrink-0" />
+                        <span>Tra cứu mã QR tức thì</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-xs text-slate-200">
+                        <BadgeCheck className="h-4 w-4 text-mint-400 shrink-0" />
+                        <span>Thử răng & cân chỉnh khớp cắn miễn phí</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2.5 text-xs text-slate-200">
                       <BadgeCheck className="h-4 w-4 text-mint-400 shrink-0" />
@@ -541,33 +559,40 @@ export default async function ServiceDetailPage({ params }: Props) {
                 return (
                   <div
                     key={other.id}
-                    className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50/50 p-6 transition-all duration-300 hover:bg-white hover:border-mint-400 hover:shadow-lg"
+                    className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200 bg-white transition-all duration-300 hover:border-mint-400 hover:shadow-lg"
                   >
                     <div>
-                      <div className="flex items-center justify-between">
-                        <span className="rounded-full bg-navy-100/60 px-2.5 py-0.5 text-xs font-medium text-navy-800">
-                          {other.category}
-                        </span>
-                        <span className="text-xs font-semibold text-mint-600">
-                          Bảo hành {other.warrantyYears}
-                        </span>
+                      {/* Thumbnail photo */}
+                      <div className="relative h-40 overflow-hidden bg-slate-100">
+                        <Image
+                          src={other.image}
+                          alt={other.name}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-navy-950/60 via-transparent to-transparent" />
+                        <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                          <span className="rounded-full bg-navy-950/80 backdrop-blur-md px-2.5 py-0.5 text-[11px] font-medium text-white">
+                            {other.category}
+                          </span>
+                          <span className="rounded-full bg-mint-500/90 backdrop-blur-md px-2 py-0.5 text-[11px] font-semibold text-white">
+                            Bảo hành {other.warrantyYears}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="mt-4 flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint-100 text-mint-600">
-                          <OtherIcon className="h-5 w-5" />
-                        </div>
-                        <h3 className="text-base font-bold text-navy-950">
+                      <div className="p-5">
+                        <h3 className="text-base font-bold text-navy-950 group-hover:text-mint-700 transition-colors">
                           {other.shortTitle}
                         </h3>
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500 line-clamp-2">
+                          {other.overview}
+                        </p>
                       </div>
-
-                      <p className="mt-3 text-xs leading-relaxed text-slate-500 line-clamp-3">
-                        {other.overview}
-                      </p>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-slate-200/60 flex items-center justify-between">
+                    <div className="px-5 pb-5 pt-4 border-t border-slate-200/60 flex items-center justify-between">
                       <span className="text-xs font-bold text-navy-900">
                         {other.priceRange.split("/")[0]}
                       </span>

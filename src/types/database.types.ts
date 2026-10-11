@@ -1,5 +1,5 @@
 /**
- * TypeScript definitions cho Database Supabase / PostgreSQL
+ * TypeScript definitions cho Database Firebase / Firestore
  * Dental Warranty Portal (SmileLab Dental)
  */
 
@@ -10,7 +10,7 @@ export type WarrantyStatus = "pending" | "active" | "expired" | "suspended" | "c
 export type ConsultationStatus = "new" | "contacted" | "resolved" | "cancelled";
 
 export interface Profile {
-  id: string; // references auth.users(id)
+  id: string; // Firebase Auth UID
   full_name: string;
   email: string;
   role: UserRole;
@@ -24,7 +24,7 @@ export interface Clinic {
   name: string;
   address: string;
   phone: string;
-  email: string | null;
+  email?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -35,7 +35,7 @@ export interface Patient {
   patient_code: string;
   full_name: string;
   phone: string;
-  email: string | null;
+  address: string | null;
   date_of_birth: string | null;
   gender: Gender | null;
   notes: string | null;
@@ -98,7 +98,7 @@ export interface ConsultationRequest {
   id: string;
   full_name: string;
   phone: string;
-  email: string | null;
+  address: string | null; // ← Thay thế email
   service: string;
   message: string | null;
   status: ConsultationStatus;
@@ -108,8 +108,8 @@ export interface ConsultationRequest {
 }
 
 /**
- * Kết quả trả về từ hàm Stored Procedure RPC tra cứu công khai: get_public_warranty_info
- * Tuyệt đối không chứa thông tin riêng tư (số điện thoại, email, địa chỉ, bệnh án)
+ * Kết quả tra cứu công khai thẻ bảo hành
+ * Tuyệt đối không chứa thông tin riêng tư
  */
 export interface PublicWarrantyResult {
   warranty_code: string;

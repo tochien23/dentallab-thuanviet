@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
-import { getDbClient } from "./dbHelper";
+import { isFirebaseConfigured, db } from "@/lib/firebase/client";
 import {
   PublicWarrantyResult,
   Warranty,
@@ -25,161 +24,156 @@ export interface WarrantyWithDetails extends Warranty {
   tooth?: Tooth;
 }
 
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes("placeholder-project"));
-}
-
-function isValidUUID(id?: string | null): boolean {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-}
-
 let localWarranties: Warranty[] = [...MOCK_WARRANTIES];
 let localWarrantyLogs: WarrantyLog[] = [...MOCK_WARRANTY_LOGS];
 
+/** Tính effective_status từ status + expires_at */
+function computeEffectiveStatus(
+  status: WarrantyStatus,
+  expiresAt: string
+): PublicWarrantyResult["effective_status"] {
+  if (status === "suspended") return "suspended";
+  if (status === "cancelled") return "cancelled";
+  if (status === "pending") return "pending";
+  if (new Date() > new Date(expiresAt)) return "expired";
+  return "active";
+}
+
+/** Mask tên bệnh nhân: Nguyễn Văn An → N*** V*** A*** */
+function maskName(name: string): string {
+  return name.replace(/(\S)\S+/g, "$1***");
+}
+
 export const warrantyService = {
   /**
-   * Tra cứu công khai (RPC) cho bệnh nhân & khách hàng
+   * Tra cứu công khai thẻ bảo hành (không tiết lộ thông tin nhạy cảm)
    */
   async searchPublicWarranty(query: string): Promise<PublicWarrantyResult | null> {
-    const cleanQuery = query.trim();
+    const cleanQuery = query.trim().toLowerCase();
     if (!cleanQuery) return null;
 
-    if (isSupabaseConfigured()) {
-      // 1. Thử gọi RPC get_public_warranty_info
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase.rpc("get_public_warranty_info", {
-          p_search_query: cleanQuery,
-        });
+        const { collection, getDocs, query: fbQuery, where, or } = await import("firebase/firestore");
 
-        if (!error && data && data.length > 0) {
-          return data[0] as PublicWarrantyResult;
+        // Tìm theo warranty_code hoặc qr_token
+        const [byCode, byToken] = await Promise.all([
+          getDocs(
+            fbQuery(collection(db, "warranties"), where("warranty_code", "==", cleanQuery.toUpperCase()))
+          ),
+          getDocs(
+            fbQuery(collection(db, "warranties"), where("qr_token", "==", cleanQuery))
+          ),
+        ]);
+
+        const snap = byCode.empty ? byToken : byCode;
+        if (snap.empty) return null;
+
+        const w = { id: snap.docs[0].id, ...snap.docs[0].data() } as Warranty;
+
+        // Lấy thông tin bổ sung
+        const { doc, getDoc } = await import("firebase/firestore");
+        const [patientSnap, toothSnap, treatmentSnap] = await Promise.all([
+          w.patient_id ? getDoc(doc(db, "patients", w.patient_id)) : Promise.resolve(null),
+          w.tooth_id ? getDoc(doc(db, "teeth", w.tooth_id)) : Promise.resolve(null),
+          w.treatment_id ? getDoc(doc(db, "treatments", w.treatment_id)) : Promise.resolve(null),
+        ]);
+
+        let clinicName: string | null = null;
+        if (treatmentSnap?.exists()) {
+          const treatment = treatmentSnap.data() as Treatment;
+          if (treatment.clinic_id) {
+            const clinicSnap = await getDoc(doc(db, "clinics", treatment.clinic_id));
+            clinicName = clinicSnap.exists() ? (clinicSnap.data().name as string) : null;
+          }
         }
+
+        const patient = patientSnap?.exists() ? (patientSnap.data() as Patient) : null;
+        const tooth = toothSnap?.exists() ? (toothSnap.data() as Tooth) : null;
+
+        return {
+          warranty_code: w.warranty_code,
+          product_name: w.product_name,
+          brand: w.brand,
+          tooth_number: tooth?.tooth_number || null,
+          jaw: tooth?.jaw || null,
+          material: tooth?.material || null,
+          shade: tooth?.shade || null,
+          clinic_name: clinicName,
+          activated_at: w.activated_at,
+          expires_at: w.expires_at,
+          status: w.status,
+          effective_status: computeEffectiveStatus(w.status, w.expires_at),
+          public_note: w.public_note || null,
+          masked_patient_name: patient?.full_name ? maskName(patient.full_name) : null,
+        };
       } catch (err) {
-        console.warn("[warrantyService] Ngoại lệ tra cứu Supabase RPC:", err);
-      }
-
-      // 2. Dự phòng phía Client: Gọi API Route nội bộ
-      if (typeof window !== "undefined") {
-        try {
-          const res = await fetch(`/api/public/warranty?code=${encodeURIComponent(cleanQuery)}`);
-          if (res.ok) {
-            const json = await res.json();
-            return (json.data as PublicWarrantyResult) || null;
-          }
-        } catch (apiErr) {
-          console.warn("[warrantyService] Lỗi gọi API /api/public/warranty:", apiErr);
-        }
-      }
-
-      // 3. Dự phòng phía Server: Truy vấn trực tiếp qua createAdminClient
-      if (typeof window === "undefined") {
-        try {
-          const { createAdminClient } = await import("@/lib/supabase/admin");
-          const admin = createAdminClient();
-          const { data: w } = await admin
-            .from("warranties")
-            .select(`
-              warranty_code,
-              product_name,
-              brand,
-              activated_at,
-              expires_at,
-              status,
-              public_note,
-              patient:patients(full_name),
-              tooth:teeth(tooth_number, jaw, material, shade),
-              treatment:treatments(clinic:clinics(name))
-            `)
-            .or(`warranty_code.ilike.${cleanQuery},qr_token.ilike.${cleanQuery}`)
-            .limit(1)
-            .maybeSingle();
-
-          if (w) {
-            const rawName = (w.patient as { full_name?: string } | null)?.full_name || "";
-            const maskedName = rawName ? rawName.replace(/(\S)\S+/g, "$1***") : null;
-            const isExpired = new Date() > new Date(w.expires_at);
-            let effectiveStatus: "active" | "expired" | "suspended" | "cancelled" | "pending" = "active";
-            if (w.status === "suspended") effectiveStatus = "suspended";
-            else if (w.status === "cancelled") effectiveStatus = "cancelled";
-            else if (w.status === "pending") effectiveStatus = "pending";
-            else if (isExpired) effectiveStatus = "expired";
-            else effectiveStatus = "active";
-
-            const toothInfo = w.tooth as {
-              tooth_number?: string;
-              jaw?: "upper" | "lower";
-              material?: string;
-              shade?: string;
-            } | null;
-
-            const treatmentInfo = w.treatment as { clinic?: { name?: string } } | null;
-
-            return {
-              warranty_code: w.warranty_code,
-              product_name: w.product_name,
-              brand: w.brand,
-              tooth_number: toothInfo?.tooth_number || null,
-              jaw: toothInfo?.jaw || null,
-              material: toothInfo?.material || null,
-              shade: toothInfo?.shade || null,
-              clinic_name: treatmentInfo?.clinic?.name || null,
-              activated_at: w.activated_at,
-              expires_at: w.expires_at,
-              status: w.status,
-              effective_status: effectiveStatus,
-              public_note: w.public_note || null,
-              masked_patient_name: maskedName,
-            };
-          }
-          return null;
-        } catch (serverErr) {
-          console.warn("[warrantyService] Server fallback query error:", serverErr);
-        }
+        console.warn("[warrantyService] Lỗi tra cứu Firebase:", err);
       }
     }
 
-    const normalized = cleanQuery.toLowerCase();
     const mock = MOCK_PUBLIC_WARRANTIES.find(
-      (w) => w.warranty_code.toLowerCase() === normalized
+      (w) => w.warranty_code.toLowerCase() === cleanQuery
     );
-
     return mock || null;
   },
 
   /**
-   * Lấy danh sách toàn bộ thẻ bảo hành cho trang Quản trị (Admin)
+   * Lấy danh sách toàn bộ thẻ bảo hành (Admin)
    */
   async getAllWarranties(
     query?: string,
     statusFilter?: string
   ): Promise<WarrantyWithDetails[]> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        let queryBuilder = supabase
-          .from("warranties")
-          .select("*, patient:patients(*), treatment:treatments(*), tooth:teeth(*)")
-          .order("created_at", { ascending: false });
+        const { collection, getDocs, orderBy, query: fbQuery, where } = await import("firebase/firestore");
+
+        let q = fbQuery(collection(db, "warranties"), orderBy("created_at", "desc"));
 
         if (statusFilter && statusFilter !== "all") {
-          queryBuilder = queryBuilder.eq("status", statusFilter);
-        }
-
-        if (query && query.trim()) {
-          const q = `%${query.trim()}%`;
-          queryBuilder = queryBuilder.or(
-            `warranty_code.ilike.${q},product_name.ilike.${q},brand.ilike.${q}`
+          q = fbQuery(
+            collection(db, "warranties"),
+            where("status", "==", statusFilter)
           );
         }
 
-        const { data, error } = await queryBuilder;
-        if (!error && data) {
-          return data as WarrantyWithDetails[];
+        const snapshot = await getDocs(q);
+        let results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Warranty));
+        if (statusFilter && statusFilter !== "all") {
+          results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         }
+
+        // Client-side text search
+        if (query && query.trim()) {
+          const qLower = query.trim().toLowerCase();
+          results = results.filter(
+            (w) =>
+              w.warranty_code.toLowerCase().includes(qLower) ||
+              w.product_name.toLowerCase().includes(qLower) ||
+              w.brand.toLowerCase().includes(qLower)
+          );
+        }
+
+        // Enrich với patient, treatment, tooth
+        const { doc, getDoc } = await import("firebase/firestore");
+        const enriched = await Promise.all(
+          results.map(async (w) => {
+            const [patientSnap, treatmentSnap, toothSnap] = await Promise.all([
+              w.patient_id ? getDoc(doc(db, "patients", w.patient_id)) : Promise.resolve(null),
+              w.treatment_id ? getDoc(doc(db, "treatments", w.treatment_id)) : Promise.resolve(null),
+              w.tooth_id ? getDoc(doc(db, "teeth", w.tooth_id)) : Promise.resolve(null),
+            ]);
+            return {
+              ...w,
+              patient: patientSnap?.exists() ? ({ id: patientSnap.id, ...patientSnap.data() } as Patient) : undefined,
+              treatment: treatmentSnap?.exists() ? ({ id: treatmentSnap.id, ...treatmentSnap.data() } as Treatment) : undefined,
+              tooth: toothSnap?.exists() ? ({ id: toothSnap.id, ...toothSnap.data() } as Tooth) : undefined,
+            };
+          })
+        );
+
+        return enriched;
       } catch (err) {
         console.warn("[warrantyService] Lỗi khi lấy danh sách bảo hành:", err);
       }
@@ -214,18 +208,26 @@ export const warrantyService = {
    * Lấy chi tiết 1 thẻ bảo hành
    */
   async getWarrantyById(id: string): Promise<WarrantyWithDetails | null> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("warranties")
-          .select("*, patient:patients(*), treatment:treatments(*), tooth:teeth(*)")
-          .eq("id", id)
-          .single();
+        const { doc, getDoc } = await import("firebase/firestore");
 
-        if (!error && data) {
-          return data as WarrantyWithDetails;
-        }
+        const snap = await getDoc(doc(db, "warranties", id));
+        if (!snap.exists()) return null;
+
+        const w = { id: snap.id, ...snap.data() } as Warranty;
+        const [patientSnap, treatmentSnap, toothSnap] = await Promise.all([
+          w.patient_id ? getDoc(doc(db, "patients", w.patient_id)) : Promise.resolve(null),
+          w.treatment_id ? getDoc(doc(db, "treatments", w.treatment_id)) : Promise.resolve(null),
+          w.tooth_id ? getDoc(doc(db, "teeth", w.tooth_id)) : Promise.resolve(null),
+        ]);
+
+        return {
+          ...w,
+          patient: patientSnap?.exists() ? ({ id: patientSnap.id, ...patientSnap.data() } as Patient) : undefined,
+          treatment: treatmentSnap?.exists() ? ({ id: treatmentSnap.id, ...treatmentSnap.data() } as Treatment) : undefined,
+          tooth: toothSnap?.exists() ? ({ id: toothSnap.id, ...toothSnap.data() } as Tooth) : undefined,
+        };
       } catch (err) {
         console.warn("[warrantyService] Lỗi lấy chi tiết thẻ:", err);
       }
@@ -233,7 +235,6 @@ export const warrantyService = {
 
     const w = localWarranties.find((item) => item.id === id);
     if (!w) return null;
-
     return {
       ...w,
       patient: MOCK_PATIENTS.find((p) => p.id === w.patient_id),
@@ -243,47 +244,51 @@ export const warrantyService = {
   },
 
   /**
-   * Cấp mới thẻ bảo hành & ghi log khởi tạo
+   * Cấp mới thẻ bảo hành
    */
   async createWarranty(
     values: WarrantyFormValues,
     performedBy = "Quản Trị Viên SmileLab"
   ): Promise<{ success: boolean; data?: Warranty; error?: string }> {
-    // Tự động tính expires_at = activated_at + warranty_period_months
     const activatedDate = new Date(values.activated_at);
     const expiresDate = new Date(activatedDate);
     expiresDate.setMonth(expiresDate.getMonth() + values.warranty_period_months);
 
     const qrToken = `qr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const newRecord = {
+        const { collection, addDoc, query: fbQuery, where, getDocs } = await import("firebase/firestore");
+
+        // Kiểm tra trùng warranty_code
+        const q = fbQuery(
+          collection(db, "warranties"),
+          where("warranty_code", "==", values.warranty_code)
+        );
+        const existing = await getDocs(q);
+        if (!existing.empty) return { success: false, error: "Mã thẻ bảo hành này đã được sử dụng." };
+
+        const payload = {
           ...values,
           qr_token: qrToken,
           expires_at: expiresDate.toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
-        const { data, error } = await supabase
-          .from("warranties")
-          .insert(newRecord)
-          .select()
-          .single();
+        const docRef = await addDoc(collection(db, "warranties"), payload);
+        const newWarranty = { id: docRef.id, ...payload } as Warranty;
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
-        // Ghi log
-        await supabase.from("warranty_logs").insert({
-          warranty_id: data.id,
+        // Ghi log vào sub-collection
+        await addDoc(collection(db, "warranties", docRef.id, "logs"), {
+          warranty_id: docRef.id,
           action: "create",
           description: `Cấp mới thẻ bảo hành mã ${values.warranty_code} thời hạn ${values.warranty_period_months} tháng.`,
-          created_by: isValidUUID(performedBy) ? performedBy : null,
+          created_by: performedBy,
+          created_at: new Date().toISOString(),
         });
 
-        return { success: true, data: data as Warranty };
+        return { success: true, data: newWarranty };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Đã có lỗi xảy ra";
         return { success: false, error: message };
@@ -293,9 +298,7 @@ export const warrantyService = {
     const exists = localWarranties.some(
       (w) => w.warranty_code.toLowerCase() === values.warranty_code.toLowerCase()
     );
-    if (exists) {
-      return { success: false, error: "Mã thẻ bảo hành này đã được sử dụng." };
-    }
+    if (exists) return { success: false, error: "Mã thẻ bảo hành này đã được sử dụng." };
 
     const newWarranty: Warranty = {
       id: `w-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -316,23 +319,23 @@ export const warrantyService = {
     };
 
     localWarranties = [newWarranty, ...localWarranties];
-
-    // Ghi log
-    const logItem: WarrantyLog = {
-      id: `log-${Date.now()}`,
-      warranty_id: newWarranty.id,
-      action: "create",
-      description: `Cấp mới thẻ bảo hành mã ${newWarranty.warranty_code} (${newWarranty.warranty_period_months} tháng)`,
-      created_by: performedBy,
-      created_at: new Date().toISOString(),
-    };
-    localWarrantyLogs = [logItem, ...localWarrantyLogs];
+    localWarrantyLogs = [
+      {
+        id: `log-${Date.now()}`,
+        warranty_id: newWarranty.id,
+        action: "create",
+        description: `Cấp mới thẻ bảo hành mã ${newWarranty.warranty_code} (${newWarranty.warranty_period_months} tháng)`,
+        created_by: performedBy,
+        created_at: new Date().toISOString(),
+      },
+      ...localWarrantyLogs,
+    ];
 
     return { success: true, data: newWarranty };
   },
 
   /**
-   * Cập nhật trạng thái thẻ bảo hành (Kích hoạt, Tạm khóa, Hủy, Còn hạn)
+   * Cập nhật trạng thái thẻ bảo hành
    */
   async updateWarrantyStatus(
     id: string,
@@ -340,23 +343,21 @@ export const warrantyService = {
     note?: string,
     performedBy = "Quản Trị Viên SmileLab"
   ): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { error } = await supabase
-          .from("warranties")
-          .update({ status, updated_at: new Date().toISOString() })
-          .eq("id", id);
+        const { doc, updateDoc, collection, addDoc } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        await updateDoc(doc(db, "warranties", id), {
+          status,
+          updated_at: new Date().toISOString(),
+        });
 
-        await supabase.from("warranty_logs").insert({
+        await addDoc(collection(db, "warranties", id, "logs"), {
           warranty_id: id,
           action: `status_change_to_${status}`,
           description: `Đổi trạng thái thẻ sang "${status}". ${note ? `Lý do: ${note}` : ""}`,
-          created_by: isValidUUID(performedBy) ? performedBy : null,
+          created_by: performedBy,
+          created_at: new Date().toISOString(),
         });
 
         return { success: true };
@@ -367,31 +368,26 @@ export const warrantyService = {
     }
 
     const index = localWarranties.findIndex((w) => w.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy thẻ bảo hành." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy thẻ bảo hành." };
 
-    localWarranties[index] = {
-      ...localWarranties[index],
-      status,
-      updated_at: new Date().toISOString(),
-    };
-
-    const logItem: WarrantyLog = {
-      id: `log-${Date.now()}`,
-      warranty_id: id,
-      action: `status_change_to_${status}`,
-      description: `Đổi trạng thái thẻ sang "${status}". ${note ? `Ghi chú: ${note}` : ""}`,
-      created_by: performedBy,
-      created_at: new Date().toISOString(),
-    };
-    localWarrantyLogs = [logItem, ...localWarrantyLogs];
+    localWarranties[index] = { ...localWarranties[index], status, updated_at: new Date().toISOString() };
+    localWarrantyLogs = [
+      {
+        id: `log-${Date.now()}`,
+        warranty_id: id,
+        action: `status_change_to_${status}`,
+        description: `Đổi trạng thái thẻ sang "${status}". ${note ? `Ghi chú: ${note}` : ""}`,
+        created_by: performedBy,
+        created_at: new Date().toISOString(),
+      },
+      ...localWarrantyLogs,
+    ];
 
     return { success: true };
   },
 
   /**
-   * Gia hạn thời gian bảo hành (Extend warranty)
+   * Gia hạn thời gian bảo hành
    */
   async extendWarranty(
     id: string,
@@ -399,40 +395,31 @@ export const warrantyService = {
     note?: string,
     performedBy = "Quản Trị Viên SmileLab"
   ): Promise<{ success: boolean; error?: string }> {
-    if (additionalMonths <= 0) {
-      return { success: false, error: "Số tháng gia hạn phải lớn hơn 0." };
-    }
+    if (additionalMonths <= 0) return { success: false, error: "Số tháng gia hạn phải lớn hơn 0." };
 
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data: w } = await supabase
-          .from("warranties")
-          .select("expires_at, warranty_period_months")
-          .eq("id", id)
-          .single();
+        const { doc, getDoc, updateDoc, collection, addDoc } = await import("firebase/firestore");
 
-        if (!w) return { success: false, error: "Không tìm thấy thẻ bảo hành." };
+        const snap = await getDoc(doc(db, "warranties", id));
+        if (!snap.exists()) return { success: false, error: "Không tìm thấy thẻ bảo hành." };
 
-        const currentExpires = new Date(w.expires_at);
-        currentExpires.setMonth(currentExpires.getMonth() + additionalMonths);
+        const w = snap.data() as Warranty;
+        const newExpires = new Date(w.expires_at);
+        newExpires.setMonth(newExpires.getMonth() + additionalMonths);
 
-        const { error } = await supabase
-          .from("warranties")
-          .update({
-            expires_at: currentExpires.toISOString(),
-            warranty_period_months: w.warranty_period_months + additionalMonths,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id);
+        await updateDoc(doc(db, "warranties", id), {
+          expires_at: newExpires.toISOString(),
+          warranty_period_months: w.warranty_period_months + additionalMonths,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) return { success: false, error: error.message };
-
-        await supabase.from("warranty_logs").insert({
+        await addDoc(collection(db, "warranties", id, "logs"), {
           warranty_id: id,
           action: "extend",
-          description: `Gia hạn thêm ${additionalMonths} tháng. Ngày hết hạn mới: ${currentExpires.toLocaleDateString("vi-VN")}. ${note ? `Lý do: ${note}` : ""}`,
-          created_by: isValidUUID(performedBy) ? performedBy : null,
+          description: `Gia hạn thêm ${additionalMonths} tháng. Ngày hết hạn mới: ${newExpires.toLocaleDateString("vi-VN")}. ${note ? `Lý do: ${note}` : ""}`,
+          created_by: performedBy,
+          created_at: new Date().toISOString(),
         });
 
         return { success: true };
@@ -443,9 +430,7 @@ export const warrantyService = {
     }
 
     const index = localWarranties.findIndex((w) => w.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy thẻ bảo hành." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy thẻ bảo hành." };
 
     const w = localWarranties[index];
     const newExpires = new Date(w.expires_at);
@@ -458,15 +443,17 @@ export const warrantyService = {
       updated_at: new Date().toISOString(),
     };
 
-    const logItem: WarrantyLog = {
-      id: `log-${Date.now()}`,
-      warranty_id: id,
-      action: "extend",
-      description: `Gia hạn thêm ${additionalMonths} tháng. Hạn mới: ${newExpires.toLocaleDateString("vi-VN")}. ${note ? `Ghi chú: ${note}` : ""}`,
-      created_by: performedBy,
-      created_at: new Date().toISOString(),
-    };
-    localWarrantyLogs = [logItem, ...localWarrantyLogs];
+    localWarrantyLogs = [
+      {
+        id: `log-${Date.now()}`,
+        warranty_id: id,
+        action: "extend",
+        description: `Gia hạn thêm ${additionalMonths} tháng. Hạn mới: ${newExpires.toLocaleDateString("vi-VN")}. ${note ? `Ghi chú: ${note}` : ""}`,
+        created_by: performedBy,
+        created_at: new Date().toISOString(),
+      },
+      ...localWarrantyLogs,
+    ];
 
     return { success: true };
   },
@@ -483,34 +470,30 @@ export const warrantyService = {
     const expiresDate = new Date(activatedDate);
     expiresDate.setMonth(expiresDate.getMonth() + values.warranty_period_months);
 
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
+        const { doc, updateDoc, getDoc, collection, addDoc } = await import("firebase/firestore");
+
         const updatePayload = {
           ...values,
+          tooth_id: values.tooth_id || null,
+          public_note: values.public_note || null,
           expires_at: expiresDate.toISOString(),
           updated_at: new Date().toISOString(),
         };
 
-        const { data, error } = await supabase
-          .from("warranties")
-          .update(updatePayload)
-          .eq("id", id)
-          .select()
-          .single();
+        await updateDoc(doc(db, "warranties", id), updatePayload);
+        const snap = await getDoc(doc(db, "warranties", id));
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
-        await supabase.from("warranty_logs").insert({
+        await addDoc(collection(db, "warranties", id, "logs"), {
           warranty_id: id,
           action: "update",
           description: `Cập nhật thông tin thẻ bảo hành mã ${values.warranty_code}.`,
-          created_by: isValidUUID(performedBy) ? performedBy : null,
+          created_by: performedBy,
+          created_at: new Date().toISOString(),
         });
 
-        return { success: true, data: data as Warranty };
+        return { success: true, data: { id: snap.id, ...snap.data() } as Warranty };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi cập nhật bảo hành";
         return { success: false, error: message };
@@ -518,9 +501,7 @@ export const warrantyService = {
     }
 
     const index = localWarranties.findIndex((w) => w.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy thẻ bảo hành cần cập nhật." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy thẻ bảo hành cần cập nhật." };
 
     const updated: Warranty = {
       ...localWarranties[index],
@@ -532,16 +513,17 @@ export const warrantyService = {
     };
 
     localWarranties[index] = updated;
-
-    const logItem: WarrantyLog = {
-      id: `log-${Date.now()}`,
-      warranty_id: id,
-      action: "update",
-      description: `Cập nhật thông tin thẻ ${updated.warranty_code}`,
-      created_by: performedBy,
-      created_at: new Date().toISOString(),
-    };
-    localWarrantyLogs = [logItem, ...localWarrantyLogs];
+    localWarrantyLogs = [
+      {
+        id: `log-${Date.now()}`,
+        warranty_id: id,
+        action: "update",
+        description: `Cập nhật thông tin thẻ ${updated.warranty_code}`,
+        created_by: performedBy,
+        created_at: new Date().toISOString(),
+      },
+      ...localWarrantyLogs,
+    ];
 
     return { success: true, data: updated };
   },
@@ -550,13 +532,10 @@ export const warrantyService = {
    * Xóa thẻ bảo hành
    */
   async deleteWarranty(id: string): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { error } = await supabase.from("warranties").delete().eq("id", id);
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "warranties", id));
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi xóa thẻ bảo hành";
@@ -570,25 +549,25 @@ export const warrantyService = {
   },
 
   /**
-   * Lấy lịch sử thao tác của 1 thẻ bảo hành (hoặc toàn bộ)
+   * Lấy lịch sử thao tác của thẻ bảo hành (sub-collection logs)
    */
   async getWarrantyLogs(warrantyId?: string): Promise<WarrantyLog[]> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        let queryBuilder = supabase
-          .from("warranty_logs")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { collection, getDocs, orderBy, query: fbQuery } = await import("firebase/firestore");
 
         if (warrantyId) {
-          queryBuilder = queryBuilder.eq("warranty_id", warrantyId);
+          // Lấy logs từ sub-collection của một thẻ cụ thể
+          const q = fbQuery(
+            collection(db, "warranties", warrantyId, "logs"),
+            orderBy("created_at", "desc")
+          );
+          const snapshot = await getDocs(q);
+          return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as WarrantyLog));
         }
 
-        const { data, error } = await queryBuilder;
-        if (!error && data) {
-          return data as WarrantyLog[];
-        }
+        // Nếu không có warrantyId, trả về empty (collectionGroup cần index)
+        return [];
       } catch (err) {
         console.warn("[warrantyService] Lỗi lấy nhật ký bảo hành:", err);
       }

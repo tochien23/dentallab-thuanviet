@@ -12,9 +12,10 @@ import {
   MessageSquareHeart,
   ExternalLink,
   LogOut,
-  X,
+  Building2,
   Stethoscope,
   UserCog,
+  X,
 } from "lucide-react";
 import { CLINIC_INFO } from "@/lib/constants";
 import { authService } from "@/services/authService";
@@ -51,6 +52,11 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/treatments",
     label: "Hồ sơ Ca điều trị",
     icon: ClipboardList,
+  },
+  {
+    href: "/admin/clinics",
+    label: "Phòng khám / Đối tác",
+    icon: Building2,
   },
   {
     href: "/admin/teeth",

@@ -1,59 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { Profile, UserRole } from "@/types/database.types";
+import { UserRole } from "@/types/database.types";
 
 export const dynamic = "force-dynamic";
 
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey || url.includes("placeholder-project")) {
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
 /**
- * Xác minh người gọi API có role 'admin' hay không
- * Trả về profile nếu hợp lệ, trả về null nếu không xác thực/không có quyền
+ * Xác minh người gọi có quyền admin (kiểm tra cookie demo hoặc Firebase session)
  */
-async function verifyAdminRole(): Promise<{ id: string; role: string } | null> {
-  try {
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+async function verifyAdminRole(request: NextRequest): Promise<boolean> {
+  const isDemoAuth = request.cookies.get("demo_admin_auth")?.value === "true";
+  if (isDemoAuth) return true;
 
-    if (!user) return null;
+  const firebaseSession = request.cookies.get("firebase_session")?.value;
+  if (firebaseSession) {
+    try {
+      const { getAdminAuth, isAdminConfigured } = await import("@/lib/firebase/admin");
+      if (isAdminConfigured()) {
+        const adminAuth = await getAdminAuth();
+        const decoded = await adminAuth.verifySessionCookie(firebaseSession, true);
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, role")
-      .eq("id", user.id)
-      .single();
+        // Kiểm tra role từ custom claims hoặc Firestore
+        const { getAdminDb } = await import("@/lib/firebase/admin");
+        const adminDb = await getAdminDb();
+        const profileSnap = await adminDb.collection("profiles").doc(decoded.uid).get();
 
-    if (!profile || (profile as Profile).role !== "admin") return null;
-
-    return { id: (profile as Profile).id, role: (profile as Profile).role };
-  } catch {
-    return null;
+        if (profileSnap.exists) {
+          const profile = profileSnap.data();
+          return profile?.role === "admin";
+        }
+      }
+    } catch {
+      return false;
+    }
   }
+
+  return false;
 }
 
 /**
  * GET: Lấy danh sách toàn bộ tài khoản nhân sự
  */
-export async function GET() {
-  const supabaseAdmin = getAdminClient();
-  if (!supabaseAdmin) {
+export async function GET(request: NextRequest) {
+  const { isAdminConfigured } = await import("@/lib/firebase/admin");
+
+  if (!isAdminConfigured()) {
     return NextResponse.json({
       success: true,
       users: [
@@ -71,38 +60,35 @@ export async function GET() {
   }
 
   try {
-    // 1. Lấy danh sách profiles từ database
-    const { data: profiles, error: profileErr } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: true });
+    const { getAdminAuth, getAdminDb } = await import("@/lib/firebase/admin");
+    const [adminAuth, adminDb] = await Promise.all([getAdminAuth(), getAdminDb()]);
 
-    if (profileErr) {
-      return NextResponse.json({ success: false, error: profileErr.message }, { status: 500 });
-    }
+    // Lấy profiles từ Firestore
+    const profilesSnap = await adminDb.collection("profiles").orderBy("created_at").get();
 
-    // 2. Lấy danh sách auth users để lấy trạng thái đăng nhập & metadata
-    const { data: authData } = await supabaseAdmin.auth.admin.listUsers({
-      perPage: 100,
-    });
+    const users = await Promise.all(
+      profilesSnap.docs.map(async (profileDoc) => {
+        const p = profileDoc.data();
+        let lastSignInAt: string | null = null;
 
-    const authMap = new Map((authData?.users || []).map((u) => [u.id, u]));
+        try {
+          const authUser = await adminAuth.getUser(profileDoc.id);
+          lastSignInAt = authUser.metadata.lastSignInTime || null;
+        } catch {
+          // User có thể đã bị xóa khỏi Auth nhưng còn profile
+        }
 
-    const users = (profiles || []).map((p: Profile) => {
-      const authUser = authMap.get(p.id);
-      const isBanned = Boolean(authUser?.banned_until && new Date(authUser.banned_until) > new Date());
-      const isActive = p.is_active !== undefined ? Boolean(p.is_active) : !isBanned;
-
-      return {
-        id: p.id,
-        email: p.email,
-        full_name: p.full_name,
-        role: p.role || "staff",
-        is_active: isActive,
-        created_at: p.created_at,
-        last_sign_in_at: authUser?.last_sign_in_at || null,
-      };
-    });
+        return {
+          id: profileDoc.id,
+          email: p.email,
+          full_name: p.full_name,
+          role: p.role || "staff",
+          is_active: p.is_active !== false,
+          created_at: p.created_at,
+          last_sign_in_at: lastSignInAt,
+        };
+      })
+    );
 
     return NextResponse.json({ success: true, users });
   } catch (err: unknown) {
@@ -112,25 +98,27 @@ export async function GET() {
 }
 
 /**
- * POST: Tạo mới một tài khoản nhân sự
+ * POST: Tạo mới tài khoản nhân sự
  */
-export async function POST(req: NextRequest) {
-  // Kiểm tra quyền admin từ session
-  const caller = await verifyAdminRole();
-  if (!caller) {
+export async function POST(request: NextRequest) {
+  const isAdmin = await verifyAdminRole(request);
+  if (!isAdmin) {
     return NextResponse.json(
-      { success: false, error: "Bạn không có quyền thực hiện thao tác này. Yêu cầu quyền Quản trị viên." },
+      { success: false, error: "Bạn không có quyền thực hiện thao tác này." },
       { status: 403 }
     );
   }
 
-  const supabaseAdmin = getAdminClient();
-  if (!supabaseAdmin) {
-    return NextResponse.json({ success: false, error: "Chưa cấu hình Supabase Service Key." }, { status: 500 });
+  const { isAdminConfigured } = await import("@/lib/firebase/admin");
+  if (!isAdminConfigured()) {
+    return NextResponse.json(
+      { success: false, error: "Chưa cấu hình Firebase Admin." },
+      { status: 500 }
+    );
   }
 
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { email, password, full_name, role } = body as {
       email?: string;
       password?: string;
@@ -152,60 +140,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { getAdminAuth, getAdminDb } = await import("@/lib/firebase/admin");
+    const [adminAuth, adminDb] = await Promise.all([getAdminAuth(), getAdminDb()]);
+
     const cleanEmail = email.trim().toLowerCase();
     const userRole: UserRole = role || "staff";
 
-    // 1. Tạo user trên Supabase Auth
-    const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+    // 1. Tạo user trên Firebase Auth
+    const userRecord = await adminAuth.createUser({
       email: cleanEmail,
-      password: password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: full_name.trim(),
-        role: userRole,
-      },
+      password,
+      displayName: full_name.trim(),
+      emailVerified: true,
     });
 
-    if (createErr || !createData.user) {
-      return NextResponse.json(
-        { success: false, error: createErr?.message || "Không thể tạo tài khoản auth." },
-        { status: 400 }
-      );
-    }
+    // 2. Thêm custom claim role
+    await adminAuth.setCustomUserClaims(userRecord.uid, { role: userRole });
 
-    const newUserId = createData.user.id;
-
-    // 2. Thêm bản ghi vào public.profiles
-    const profilePayload: Record<string, unknown> = {
-      id: newUserId,
+    // 3. Tạo profile document trong Firestore
+    await adminDb.collection("profiles").doc(userRecord.uid).set({
       full_name: full_name.trim(),
       email: cleanEmail,
       role: userRole,
       is_active: true,
+      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    };
-
-    const { error: insertErr } = await supabaseAdmin.from("profiles").insert(profilePayload);
-
-    // Fallback nếu cột is_active chưa có trong Postgres schema
-    if (insertErr && insertErr.message?.includes("is_active")) {
-      delete profilePayload.is_active;
-      await supabaseAdmin.from("profiles").insert(profilePayload);
-    } else if (insertErr) {
-      // Nếu insert profile lỗi, dọn dẹp auth user
-      await supabaseAdmin.auth.admin.deleteUser(newUserId);
-      return NextResponse.json({ success: false, error: insertErr.message }, { status: 400 });
-    }
+    });
 
     return NextResponse.json({
       success: true,
       user: {
-        id: newUserId,
+        id: userRecord.uid,
         email: cleanEmail,
         full_name: full_name.trim(),
         role: userRole,
         is_active: true,
-        created_at: createData.user.created_at,
+        created_at: userRecord.metadata.creationTime,
       },
     });
   } catch (err: unknown) {
@@ -215,25 +185,24 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * PUT: Cập nhật thông tin tài khoản / Đặt lại mật khẩu / Khóa tài khoản
+ * PUT: Cập nhật thông tin / Đổi mật khẩu / Khóa tài khoản
  */
-export async function PUT(req: NextRequest) {
-  // Kiểm tra quyền admin từ session
-  const caller = await verifyAdminRole();
-  if (!caller) {
+export async function PUT(request: NextRequest) {
+  const isAdmin = await verifyAdminRole(request);
+  if (!isAdmin) {
     return NextResponse.json(
-      { success: false, error: "Bạn không có quyền thực hiện thao tác này. Yêu cầu quyền Quản trị viên." },
+      { success: false, error: "Bạn không có quyền thực hiện thao tác này." },
       { status: 403 }
     );
   }
 
-  const supabaseAdmin = getAdminClient();
-  if (!supabaseAdmin) {
-    return NextResponse.json({ success: false, error: "Chưa cấu hình Supabase Service Key." }, { status: 500 });
+  const { isAdminConfigured } = await import("@/lib/firebase/admin");
+  if (!isAdminConfigured()) {
+    return NextResponse.json({ success: false, error: "Chưa cấu hình Firebase Admin." }, { status: 500 });
   }
 
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { id, full_name, role, is_active, newPassword } = body as {
       id: string;
       full_name?: string;
@@ -243,58 +212,39 @@ export async function PUT(req: NextRequest) {
     };
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "Thiếu ID tài khoản cần cập nhật." }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Thiếu ID tài khoản." }, { status: 400 });
     }
 
-    // 1. Đặt lại mật khẩu nếu có
+    const { getAdminAuth, getAdminDb } = await import("@/lib/firebase/admin");
+    const [adminAuth, adminDb] = await Promise.all([getAdminAuth(), getAdminDb()]);
+
+    // Cập nhật Firebase Auth
+    const authUpdate: Record<string, unknown> = {};
     if (newPassword) {
       if (newPassword.length < 6) {
-        return NextResponse.json({ success: false, error: "Mật khẩu mới phải từ 6 ký tự trở lên." }, { status: 400 });
+        return NextResponse.json({ success: false, error: "Mật khẩu mới phải từ 6 ký tự." }, { status: 400 });
       }
-      const { error: pwdErr } = await supabaseAdmin.auth.admin.updateUserById(id, {
-        password: newPassword,
-      });
-      if (pwdErr) {
-        return NextResponse.json({ success: false, error: pwdErr.message }, { status: 400 });
-      }
+      authUpdate.password = newPassword;
+    }
+    if (full_name) authUpdate.displayName = full_name.trim();
+    if (is_active !== undefined) authUpdate.disabled = !is_active;
+
+    if (Object.keys(authUpdate).length > 0) {
+      await adminAuth.updateUser(id, authUpdate);
     }
 
-    // 2. Cập nhật trạng thái khóa/mở khóa qua Supabase Auth ban
-    if (is_active !== undefined) {
-      await supabaseAdmin.auth.admin.updateUserById(id, {
-        ban_duration: is_active ? "none" : "876000h",
-        user_metadata: { is_active },
-      });
+    // Cập nhật custom claims nếu đổi role
+    if (role) {
+      await adminAuth.setCustomUserClaims(id, { role });
     }
 
-    // 3. Cập nhật bảng profiles
-    const updateProfile: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    if (full_name !== undefined) updateProfile.full_name = full_name.trim();
-    if (role !== undefined) updateProfile.role = role;
-    if (is_active !== undefined) updateProfile.is_active = is_active;
+    // Cập nhật Firestore profile
+    const profileUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (full_name) profileUpdate.full_name = full_name.trim();
+    if (role) profileUpdate.role = role;
+    if (is_active !== undefined) profileUpdate.is_active = is_active;
 
-    const { error: profErr } = await supabaseAdmin
-      .from("profiles")
-      .update(updateProfile)
-      .eq("id", id);
-
-    // Fallback nếu cột is_active chưa có trong Postgres
-    if (profErr && profErr.message?.includes("is_active")) {
-      delete updateProfile.is_active;
-      await supabaseAdmin.from("profiles").update(updateProfile).eq("id", id);
-    }
-
-    // Cập nhật metadata của auth user
-    if (full_name || role) {
-      await supabaseAdmin.auth.admin.updateUserById(id, {
-        user_metadata: {
-          ...(full_name ? { full_name: full_name.trim() } : {}),
-          ...(role ? { role } : {}),
-        },
-      });
-    }
+    await adminDb.collection("profiles").doc(id).update(profileUpdate);
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
@@ -306,23 +256,22 @@ export async function PUT(req: NextRequest) {
 /**
  * DELETE: Xóa tài khoản nhân sự
  */
-export async function DELETE(req: NextRequest) {
-  // Kiểm tra quyền admin từ session
-  const caller = await verifyAdminRole();
-  if (!caller) {
+export async function DELETE(request: NextRequest) {
+  const isAdmin = await verifyAdminRole(request);
+  if (!isAdmin) {
     return NextResponse.json(
-      { success: false, error: "Bạn không có quyền thực hiện thao tác này. Yêu cầu quyền Quản trị viên." },
+      { success: false, error: "Bạn không có quyền thực hiện thao tác này." },
       { status: 403 }
     );
   }
 
-  const supabaseAdmin = getAdminClient();
-  if (!supabaseAdmin) {
-    return NextResponse.json({ success: false, error: "Chưa cấu hình Supabase Service Key." }, { status: 500 });
+  const { isAdminConfigured } = await import("@/lib/firebase/admin");
+  if (!isAdminConfigured()) {
+    return NextResponse.json({ success: false, error: "Chưa cấu hình Firebase Admin." }, { status: 500 });
   }
 
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { id, currentUserId } = body as { id: string; currentUserId?: string };
 
     if (!id) {
@@ -336,14 +285,11 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // 1. Xóa trong auth.users (profiles có ON DELETE CASCADE sẽ tự động xóa)
-    const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(id);
-    if (delErr) {
-      return NextResponse.json({ success: false, error: delErr.message }, { status: 400 });
-    }
+    const { getAdminAuth, getAdminDb } = await import("@/lib/firebase/admin");
+    const [adminAuth, adminDb] = await Promise.all([getAdminAuth(), getAdminDb()]);
 
-    // Đảm bảo profile bị xóa nếu cascade chưa kịp chạy
-    await supabaseAdmin.from("profiles").delete().eq("id", id);
+    await adminAuth.deleteUser(id);
+    await adminDb.collection("profiles").doc(id).delete();
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

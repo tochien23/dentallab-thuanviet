@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Schema xác thực form đăng ký tư vấn
- * Sử dụng Zod v4 API
+ * Sử dụng Zod v4 API — thay email bằng address (địa chỉ)
  */
 export const consultationSchema = z.object({
   fullName: z
@@ -14,10 +14,9 @@ export const consultationSchema = z.object({
     .min(9, "Số điện thoại không hợp lệ")
     .max(15, "Số điện thoại không hợp lệ")
     .regex(/^[0-9+\-\s()]+$/, "Số điện thoại chỉ chứa chữ số và ký tự +, -, (, )"),
-  email: z
+  address: z
     .string()
-    .email("Email không hợp lệ")
-    .max(255, "Email quá dài")
+    .max(300, "Địa chỉ không được vượt quá 300 ký tự")
     .optional()
     .or(z.literal("")),
   service: z

@@ -1,4 +1,4 @@
-import { getDbClient } from "./dbHelper";
+import { isFirebaseConfigured, db } from "@/lib/firebase/client";
 import { Tooth, Treatment } from "@/types/database.types";
 import { ToothFormValues } from "@/lib/validations/tooth";
 import { MOCK_TEETH, MOCK_TREATMENTS } from "./mockData";
@@ -7,37 +7,60 @@ export interface ToothWithTreatment extends Tooth {
   treatment?: Treatment;
 }
 
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes("placeholder-project"));
-}
-
 let localTeeth: Tooth[] = [...MOCK_TEETH];
 
 export const toothService = {
   /**
-   * Lấy danh sách chi tiết răng, có thể lọc theo treatmentId hoặc tìm kiếm
+   * Lấy danh sách chi tiết răng
    */
   async getAllTeeth(treatmentId?: string, query?: string): Promise<ToothWithTreatment[]> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        let queryBuilder = supabase
-          .from("teeth")
-          .select("*, treatment:treatments(*)")
-          .order("created_at", { ascending: false });
+        const { collection, getDocs, orderBy, query: fbQuery, where } = await import("firebase/firestore");
+
+        let q = fbQuery(collection(db, "teeth"), orderBy("created_at", "desc"));
 
         if (treatmentId) {
-          queryBuilder = queryBuilder.eq("treatment_id", treatmentId);
+          q = fbQuery(
+            collection(db, "teeth"),
+            where("treatment_id", "==", treatmentId)
+          );
         }
 
-        const { data, error } = await queryBuilder;
-        if (!error && data) {
-          return data as ToothWithTreatment[];
+        const snapshot = await getDocs(q);
+        let results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Tooth));
+        if (treatmentId) {
+          results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         }
+
+        if (query && query.trim()) {
+          const qLower = query.trim().toLowerCase();
+          results = results.filter(
+            (t) =>
+              t.tooth_number.toLowerCase().includes(qLower) ||
+              t.material.toLowerCase().includes(qLower) ||
+              t.brand.toLowerCase().includes(qLower) ||
+              (t.shade && t.shade.toLowerCase().includes(qLower))
+          );
+        }
+
+        // Enrich với treatment
+        const enriched = await Promise.all(
+          results.map(async (tooth) => {
+            const { doc, getDoc } = await import("firebase/firestore");
+            const treatmentSnap = await getDoc(doc(db, "treatments", tooth.treatment_id));
+            return {
+              ...tooth,
+              treatment: treatmentSnap.exists()
+                ? ({ id: treatmentSnap.id, ...treatmentSnap.data() } as Treatment)
+                : undefined,
+            };
+          })
+        );
+
+        return enriched;
       } catch (err) {
-        console.warn("[toothService] Lỗi khi lấy danh sách răng từ Supabase:", err);
+        console.warn("[toothService] Lỗi khi lấy danh sách răng:", err);
       }
     }
 
@@ -46,9 +69,7 @@ export const toothService = {
       treatment: MOCK_TREATMENTS.find((t) => t.id === tooth.treatment_id),
     }));
 
-    if (treatmentId) {
-      result = result.filter((t) => t.treatment_id === treatmentId);
-    }
+    if (treatmentId) result = result.filter((t) => t.treatment_id === treatmentId);
 
     if (query && query.trim()) {
       const q = query.trim().toLowerCase();
@@ -69,18 +90,22 @@ export const toothService = {
    * Lấy chi tiết răng theo ID
    */
   async getToothById(id: string): Promise<ToothWithTreatment | null> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("teeth")
-          .select("*, treatment:treatments(*)")
-          .eq("id", id)
-          .single();
+        const { doc, getDoc } = await import("firebase/firestore");
 
-        if (!error && data) {
-          return data as ToothWithTreatment;
-        }
+        const snap = await getDoc(doc(db, "teeth", id));
+        if (!snap.exists()) return null;
+
+        const tooth = { id: snap.id, ...snap.data() } as Tooth;
+        const treatmentSnap = await getDoc(doc(db, "treatments", tooth.treatment_id));
+
+        return {
+          ...tooth,
+          treatment: treatmentSnap.exists()
+            ? ({ id: treatmentSnap.id, ...treatmentSnap.data() } as Treatment)
+            : undefined,
+        };
       } catch (err) {
         console.warn("[toothService] Lỗi lấy chi tiết răng:", err);
       }
@@ -88,7 +113,6 @@ export const toothService = {
 
     const t = localTeeth.find((tooth) => tooth.id === id);
     if (!t) return null;
-
     return {
       ...t,
       treatment: MOCK_TREATMENTS.find((item) => item.id === t.treatment_id),
@@ -101,19 +125,18 @@ export const toothService = {
   async createTooth(
     values: ToothFormValues
   ): Promise<{ success: boolean; data?: Tooth; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("teeth")
-          .insert(values)
-          .select()
-          .single();
+        const { collection, addDoc } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true, data: data as Tooth };
+        const payload = {
+          ...values,
+          shade: values.shade || null,
+          notes: values.notes || null,
+          created_at: new Date().toISOString(),
+        };
+        const docRef = await addDoc(collection(db, "teeth"), payload);
+        return { success: true, data: { id: docRef.id, ...payload } as Tooth };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi lưu chi tiết răng";
         return { success: false, error: message };
@@ -143,20 +166,19 @@ export const toothService = {
     id: string,
     values: ToothFormValues
   ): Promise<{ success: boolean; data?: Tooth; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("teeth")
-          .update(values)
-          .eq("id", id)
-          .select()
-          .single();
+        const { doc, updateDoc, getDoc } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true, data: data as Tooth };
+        const updatePayload = {
+          ...values,
+          shade: values.shade || null,
+          notes: values.notes || null,
+        };
+
+        await updateDoc(doc(db, "teeth", id), updatePayload);
+        const snap = await getDoc(doc(db, "teeth", id));
+        return { success: true, data: { id: snap.id, ...snap.data() } as Tooth };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi cập nhật răng";
         return { success: false, error: message };
@@ -164,9 +186,7 @@ export const toothService = {
     }
 
     const index = localTeeth.findIndex((t) => t.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy chi tiết răng cần sửa." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy chi tiết răng cần sửa." };
 
     const updated: Tooth = {
       ...localTeeth[index],
@@ -174,7 +194,6 @@ export const toothService = {
       shade: values.shade || null,
       notes: values.notes || null,
     };
-
     localTeeth[index] = updated;
     return { success: true, data: updated };
   },
@@ -183,13 +202,10 @@ export const toothService = {
    * Xóa chi tiết răng
    */
   async deleteTooth(id: string): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { error } = await supabase.from("teeth").delete().eq("id", id);
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "teeth", id));
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi xóa chi tiết răng";

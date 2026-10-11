@@ -46,7 +46,7 @@ export default function ConsultationForm({
     defaultValues: {
       fullName: "",
       phone: "",
-      email: "",
+      address: "",
       service: initialService,
       message: "",
     },
@@ -194,25 +194,25 @@ export default function ConsultationForm({
                 )}
               </div>
 
-              {/* Email */}
+              {/* Địa chỉ */}
               <div>
                 <label
-                  htmlFor="email"
+                  htmlFor="address"
                   className="mb-1.5 block text-sm font-medium text-navy-900"
                 >
-                  Email
+                  Địa chỉ
                 </label>
                 <input
-                  id="email"
-                  type="email"
-                  placeholder="Nhập email (không bắt buộc)"
-                  className={`w-full rounded-lg border bg-white px-4 py-3 text-sm text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-mint-500 ${errors.email ? "border-red-300" : "border-slate-200"
+                  id="address"
+                  type="text"
+                  placeholder="Nhập địa chỉ (không bắt buộc)"
+                  className={`w-full rounded-lg border bg-white px-4 py-3 text-sm text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-mint-500 ${errors.address ? "border-red-300" : "border-slate-200"
                     }`}
-                  {...register("email")}
+                  {...register("address")}
                 />
-                {errors.email && (
+                {errors.address && (
                   <p className="mt-1 text-xs text-red-500">
-                    {errors.email.message}
+                    {errors.address.message}
                   </p>
                 )}
               </div>

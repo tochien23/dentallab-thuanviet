@@ -1,14 +1,7 @@
-import { createClient } from "@/lib/supabase/client";
-import { getDbClient } from "./dbHelper";
+import { isFirebaseConfigured, db } from "@/lib/firebase/client";
 import { ConsultationRequest, ConsultationStatus } from "@/types/database.types";
 import { ConsultationFormValues } from "@/lib/validations/consultation";
 import { MOCK_CONSULTATIONS } from "./mockData";
-
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes("placeholder-project"));
-}
 
 let localConsultations: ConsultationRequest[] = [...MOCK_CONSULTATIONS];
 
@@ -19,35 +12,27 @@ export const consultationService = {
   async createConsultation(
     values: ConsultationFormValues
   ): Promise<{ success: boolean; data?: ConsultationRequest; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = createClient();
+        const { collection, addDoc } = await import("firebase/firestore");
+
         const newPayload = {
           full_name: values.fullName,
           phone: values.phone,
-          email: values.email || null,
+          address: values.address || null,
           service: values.service,
           message: values.message || null,
           status: "new" as const,
+          internal_note: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
-        const { error } = await supabase
-          .from("consultation_requests")
-          .insert([newPayload]);
-
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        const docRef = await addDoc(collection(db, "consultations"), newPayload);
 
         return {
           success: true,
-          data: {
-            id: `c-${Date.now()}`,
-            ...newPayload,
-            internal_note: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
+          data: { id: docRef.id, ...newPayload },
         };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Đã có lỗi xảy ra";
@@ -59,7 +44,7 @@ export const consultationService = {
       id: `c-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       full_name: values.fullName,
       phone: values.phone,
-      email: values.email || null,
+      address: values.address || null,
       service: values.service,
       message: values.message || null,
       status: "new",
@@ -85,29 +70,38 @@ export const consultationService = {
     statusFilter?: string,
     query?: string
   ): Promise<ConsultationRequest[]> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        let queryBuilder = supabase
-          .from("consultation_requests")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { collection, getDocs, query: fbQuery, orderBy, where } = await import("firebase/firestore");
+
+        let q = fbQuery(collection(db, "consultations"), orderBy("created_at", "desc"));
 
         if (statusFilter && statusFilter !== "all") {
-          queryBuilder = queryBuilder.eq("status", statusFilter);
-        }
-
-        if (query && query.trim()) {
-          const q = `%${query.trim()}%`;
-          queryBuilder = queryBuilder.or(
-            `full_name.ilike.${q},phone.ilike.${q},service.ilike.${q}`
+          q = fbQuery(
+            collection(db, "consultations"),
+            where("status", "==", statusFilter)
           );
         }
 
-        const { data, error } = await queryBuilder;
-        if (!error && data) {
-          return data as ConsultationRequest[];
+        const snapshot = await getDocs(q);
+        let results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ConsultationRequest));
+        if (statusFilter && statusFilter !== "all") {
+          results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         }
+
+        // Client-side filter cho query tìm kiếm (Firestore không hỗ trợ full-text search native)
+        if (query && query.trim()) {
+          const qLower = query.trim().toLowerCase();
+          results = results.filter(
+            (c) =>
+              c.full_name.toLowerCase().includes(qLower) ||
+              c.phone.includes(qLower) ||
+              c.service.toLowerCase().includes(qLower) ||
+              (c.address && c.address.toLowerCase().includes(qLower))
+          );
+        }
+
+        return results;
       } catch (err) {
         console.warn("[consultationService] Lỗi khi lấy danh sách tư vấn:", err);
       }
@@ -126,7 +120,7 @@ export const consultationService = {
           c.full_name.toLowerCase().includes(q) ||
           c.phone.includes(q) ||
           c.service.toLowerCase().includes(q) ||
-          (c.email && c.email.toLowerCase().includes(q))
+          (c.address && c.address.toLowerCase().includes(q))
       );
     }
 
@@ -134,31 +128,28 @@ export const consultationService = {
   },
 
   /**
-   * Cập nhật trạng thái và ghi chú nội bộ cho yêu cầu tư vấn
+   * Cập nhật trạng thái và ghi chú nội bộ
    */
   async updateConsultation(
     id: string,
     status: ConsultationStatus,
     internalNote?: string | null
   ): Promise<{ success: boolean; data?: ConsultationRequest; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { data, error } = await supabase
-          .from("consultation_requests")
-          .update({
-            status,
-            internal_note: internalNote,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id)
-          .select()
-          .single();
+        const { doc, updateDoc, getDoc } = await import("firebase/firestore");
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true, data: data as ConsultationRequest };
+        const ref = doc(db, "consultations", id);
+        const updatePayload: Record<string, unknown> = {
+          status,
+          updated_at: new Date().toISOString(),
+        };
+        if (internalNote !== undefined) updatePayload.internal_note = internalNote;
+
+        await updateDoc(ref, updatePayload);
+
+        const snap = await getDoc(ref);
+        return { success: true, data: { id: snap.id, ...snap.data() } as ConsultationRequest };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi cập nhật tư vấn";
         return { success: false, error: message };
@@ -166,9 +157,7 @@ export const consultationService = {
     }
 
     const index = localConsultations.findIndex((c) => c.id === id);
-    if (index === -1) {
-      return { success: false, error: "Không tìm thấy yêu cầu tư vấn." };
-    }
+    if (index === -1) return { success: false, error: "Không tìm thấy yêu cầu tư vấn." };
 
     const updated: ConsultationRequest = {
       ...localConsultations[index],
@@ -185,17 +174,10 @@ export const consultationService = {
    * Xóa yêu cầu tư vấn
    */
   async deleteConsultation(id: string): Promise<{ success: boolean; error?: string }> {
-    if (isSupabaseConfigured()) {
+    if (isFirebaseConfigured()) {
       try {
-        const supabase = await getDbClient();
-        const { error } = await supabase
-          .from("consultation_requests")
-          .delete()
-          .eq("id", id);
-
-        if (error) {
-          return { success: false, error: error.message };
-        }
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "consultations", id));
         return { success: true };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Lỗi xóa yêu cầu tư vấn";

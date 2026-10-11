@@ -20,11 +20,10 @@ export const patientFormSchema = z.object({
     .min(9, "Số điện thoại không hợp lệ")
     .max(20, "Số điện thoại không hợp lệ")
     .regex(/^[0-9+\-\s()]+$/, "Số điện thoại chỉ chứa chữ số và ký tự +, -, (, )"),
-  email: z
+  address: z
     .string()
     .trim()
-    .email("Email không hợp lệ")
-    .max(255, "Email quá dài")
+    .max(255, "Địa chỉ không quá 255 ký tự")
     .optional()
     .nullable()
     .or(z.literal("")),

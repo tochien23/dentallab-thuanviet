@@ -345,13 +345,25 @@ export default function TreatmentsAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-navy-900">
-                    Bệnh nhân tiếp nhận <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-navy-900">
+                      Bệnh nhân tiếp nhận <span className="text-rose-500">*</span>
+                    </label>
+                    <Link
+                      href="/admin/patients"
+                      target="_blank"
+                      className="text-[11px] font-medium text-mint-600 hover:text-mint-700 hover:underline"
+                    >
+                      + Thêm bệnh nhân
+                    </Link>
+                  </div>
                   <select
                     {...register("patient_id")}
                     className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-navy-950 focus:border-mint-500 focus:outline-none bg-white"
                   >
+                    {patients.length === 0 && (
+                      <option value="">-- Chưa có hồ sơ bệnh nhân --</option>
+                    )}
                     {patients.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.full_name} ({p.patient_code} - {p.phone})
@@ -364,21 +376,42 @@ export default function TreatmentsAdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-navy-900">
-                    Phòng khám / Cơ sở <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-navy-900">
+                      Phòng khám / Cơ sở <span className="text-rose-500">*</span>
+                    </label>
+                    <Link
+                      href="/admin/clinics"
+                      target="_blank"
+                      className="text-[11px] font-medium text-mint-600 hover:text-mint-700 hover:underline"
+                    >
+                      + Thêm phòng khám
+                    </Link>
+                  </div>
                   <select
                     {...register("clinic_id")}
                     className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-navy-950 focus:border-mint-500 focus:outline-none bg-white"
                   >
+                    {clinics.length === 0 && (
+                      <option value="">-- Chưa có phòng khám đối tác --</option>
+                    )}
                     {clinics.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {c.name} {c.is_active ? "" : "(Tạm ngưng)"}
                       </option>
                     ))}
                   </select>
                   {errors.clinic_id && (
                     <p className="text-[11px] text-rose-500 mt-1">{errors.clinic_id.message}</p>
+                  )}
+                  {clinics.length === 0 && (
+                    <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
+                      <span>⚠️ Hệ thống chưa có phòng khám nào. Vui lòng</span>
+                      <Link href="/admin/clinics" className="underline font-semibold text-navy-950 hover:text-mint-600">
+                        tạo phòng khám đối tác
+                      </Link>
+                      <span>trước.</span>
+                    </p>
                   )}
                 </div>
 

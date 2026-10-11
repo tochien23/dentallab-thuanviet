@@ -28,6 +28,7 @@ export const SERVICES = [
     id: "zirconia",
     slug: "zirconia",
     name: "Răng sứ Zirconia",
+    image: "/images/services/zirconia.jpg",
     description:
       "Phôi sứ Zirconia cao cấp, độ bền vượt trội, thẩm mỹ tự nhiên. Phù hợp cho phục hình cầu răng, mão răng toàn hàm với tuổi thọ lên đến 20 năm.",
     icon: "Crown" as const,
@@ -36,6 +37,7 @@ export const SERVICES = [
     id: "emax",
     slug: "rang-su-kim-loai",
     name: "Răng sứ Kim Loại",
+    image: "/images/services/metal-ceramic.webp",
     description:
       "Giải pháp phục hồi chức năng ăn nhai vững chắc và kinh tế cho các trường hợp mất răng hoặc răng hàm hư tổn nặng, cấu trúc khung sườn kim loại y tế phủ men sứ bền bỉ.",
     icon: "Sparkles" as const,
@@ -44,6 +46,7 @@ export const SERVICES = [
     id: "veneer",
     slug: "veneer",
     name: "Mặt dán sứ Veneer",
+    image: "/images/services/veneer.jpg",
     description:
       "Lớp sứ siêu mỏng dán trực tiếp lên bề mặt răng, bảo tồn mô răng tối đa. Giải pháp thẩm mỹ nhanh chóng, nhẹ nhàng cho nụ cười hoàn hảo.",
     icon: "Layers" as const,
@@ -52,6 +55,7 @@ export const SERVICES = [
     id: "implant",
     slug: "implant",
     name: "Phục hình trên Implant",
+    image: "/images/services/implant.webp",
     description:
       "Phục hình răng sứ trên trụ Implant Titanium hoặc Zirconia. Tái tạo răng mất hoàn chỉnh, ổn định lâu dài, không ảnh hưởng răng lân cận.",
     icon: "Puzzle" as const,

@@ -9,8 +9,8 @@ export const treatmentFormSchema = z.object({
     .trim()
     .min(3, "Mã hồ sơ ca phải có ít nhất 3 ký tự")
     .max(50, "Mã hồ sơ ca không quá 50 ký tự"),
-  patient_id: z.string().uuid("Vui lòng chọn bệnh nhân"),
-  clinic_id: z.string().uuid("Vui lòng chọn phòng khám"),
+  patient_id: z.string().min(1, "Vui lòng chọn bệnh nhân"),
+  clinic_id: z.string().min(1, "Vui lòng chọn phòng khám"),
   dentist_name: z
     .string()
     .trim()

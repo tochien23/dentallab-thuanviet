@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Crown, Sparkles, Layers, Puzzle, ArrowRight } from "lucide-react";
 import { SERVICES } from "@/lib/constants";
 
@@ -46,12 +47,18 @@ export default function ServicesSection() {
               >
                 <div>
                   {/* Visual header */}
-                  <div className="relative flex h-48 items-center justify-center bg-gradient-to-br from-slate-100 via-mint-50/20 to-slate-50 sm:h-52">
-                    <div className="text-center">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-md shadow-navy-900/5 transition-transform duration-300 group-hover:scale-110">
-                        <IconComponent className="h-8 w-8 text-mint-600 transition-colors group-hover:text-mint-700" />
-                      </div>
-                      <span className="mt-3 inline-block rounded-full bg-navy-900/5 px-3 py-1 text-xs font-medium text-navy-800">
+                  <div className="relative h-48 overflow-hidden bg-slate-100 sm:h-56">
+                    <Image
+                      src={service.image}
+                      alt={service.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-navy-950/70 via-transparent to-transparent" />
+                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-navy-900/85 px-2.5 py-1 text-xs font-semibold text-white shadow-sm backdrop-blur-sm">
+                        <IconComponent className="h-3.5 w-3.5 text-mint-400" />
                         SmileLab CAD/CAM
                       </span>
                     </div>

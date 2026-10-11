@@ -23,9 +23,9 @@ export const warrantyFormSchema = z.object({
     .min(3, "Mã bảo hành phải có ít nhất 3 ký tự")
     .max(50, "Mã bảo hành không được vượt quá 50 ký tự")
     .regex(/^[A-Za-z0-9\-_]+$/, "Mã bảo hành chỉ chứa chữ cái, số, dấu gạch ngang hoặc gạch dưới"),
-  patient_id: z.string().uuid("Vui lòng chọn khách hàng hợp lệ"),
-  treatment_id: z.string().uuid("Vui lòng chọn ca điều trị hợp lệ"),
-  tooth_id: z.string().uuid("Vị trí răng không hợp lệ").optional().nullable(),
+  patient_id: z.string().min(1, "Vui lòng chọn khách hàng hợp lệ"),
+  treatment_id: z.string().min(1, "Vui lòng chọn ca điều trị hợp lệ"),
+  tooth_id: z.string().min(1, "Vị trí răng không hợp lệ").optional().nullable().or(z.literal("")),
   product_name: z
     .string()
     .trim()

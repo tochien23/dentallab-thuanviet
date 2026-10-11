@@ -18,15 +18,7 @@ export const clinicFormSchema = z.object({
     .trim()
     .min(9, "Số điện thoại không hợp lệ")
     .max(20, "Số điện thoại không hợp lệ"),
-  email: z
-    .string()
-    .trim()
-    .email("Email không hợp lệ")
-    .max(255, "Email quá dài")
-    .optional()
-    .nullable()
-    .or(z.literal("")),
-  is_active: z.boolean().default(true),
+  is_active: z.boolean(),
 });
 
 export type ClinicFormValues = z.infer<typeof clinicFormSchema>;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   ShieldCheck,
@@ -142,14 +143,24 @@ export default function ServicesPage() {
                     className="group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:border-mint-400 hover:shadow-xl sm:p-8"
                   >
                     <div>
-                      {/* Top Badges */}
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-medium text-navy-800">
-                          {item.category}
-                        </span>
-                        <span className="rounded-full bg-mint-50 px-3 py-1 text-xs font-semibold text-mint-700">
-                          {item.heroBadge}
-                        </span>
+                      {/* Image header banner */}
+                      <div className="relative -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 mb-6 h-52 overflow-hidden bg-slate-100">
+                        <Image
+                          src={item.image}
+                          alt={item.name}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 50vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-navy-950/70 via-transparent to-transparent" />
+                        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+                          <span className="rounded-full bg-navy-950/85 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                            {item.category}
+                          </span>
+                          <span className="rounded-full bg-mint-500/95 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                            {item.heroBadge}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Header with Icon */}
@@ -394,36 +405,44 @@ export default function ServicesPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm lg:p-8">
-                  <h3 className="text-lg font-bold text-white sm:text-xl">
-                    Cam kết chất lượng SmileLab Dental
-                  </h3>
-                  <div className="mt-6 space-y-4">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <h4 className="text-sm font-semibold text-mint-400">
-                        1. Phôi sứ chính hãng 100%
+                <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-2xl">
+                  <div className="relative h-64 sm:h-72">
+                    <Image
+                      src="/images/about/lab-cadcam.jpg"
+                      alt="SmileLab CAD/CAM Precision Digital Dentistry Laboratory"
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-navy-950/90 via-navy-950/30 to-transparent" />
+                    <div className="absolute bottom-4 left-4 right-4">
+                      <span className="rounded-md bg-mint-500 px-2.5 py-1 text-xs font-semibold text-white">
+                        Trung tâm Labo kỹ thuật số
+                      </span>
+                      <h4 className="mt-2 text-base font-bold text-white sm:text-lg">
+                        Hệ Thống Phay Tiện CAD/CAM 5 Trục SmileLab
                       </h4>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Có mã vạch thẻ bảo hành chính ngạch từ các tập đoàn nha khoa hàng đầu thế giới (Dentsply Sirona, Noritake, Ivoclar Vivadent).
-                      </p>
                     </div>
+                  </div>
 
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <h4 className="text-sm font-semibold text-mint-400">
-                        2. Bảo tồn mô răng & tủy răng
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Ứng dụng kỹ thuật mài sửa soạn xâm lấn tối thiểu, bảo tồn tối đa răng thật nguyên bản của khách hàng.
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <h4 className="text-sm font-semibold text-mint-400">
-                        3. Đồng hành dài hạn
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Chăm sóc định kỳ miễn phí 6 tháng/lần trọn đời trong suốt thời hạn bảo hành sản phẩm.
-                      </p>
+                  <div className="p-6">
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
+                        <h5 className="text-xs font-semibold text-mint-400">
+                          Phôi sứ 100% chính ngạch quốc tế
+                        </h5>
+                        <p className="mt-1 text-xs text-slate-300">
+                          Xuất xứ từ Đức, Nhật, Mỹ với mã vạch chứng nhận an toàn sinh học.
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
+                        <h5 className="text-xs font-semibold text-mint-400">
+                          Bảo hành điện tử chính hãng đến 20 năm
+                        </h5>
+                        <p className="mt-1 text-xs text-slate-300">
+                          Tra cứu thẻ bảo hành nhanh chóng qua mã QR trên camera điện thoại.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

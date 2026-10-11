@@ -4,7 +4,7 @@ import { z } from "zod";
  * Schema tạo / cập nhật chi tiết răng
  */
 export const toothFormSchema = z.object({
-  treatment_id: z.string().uuid("Vui lòng chọn ca điều trị"),
+  treatment_id: z.string().min(1, "Vui lòng chọn ca điều trị"),
   tooth_number: z
     .string()
     .trim()
