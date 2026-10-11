@@ -93,7 +93,7 @@ export default async function ServiceDetailPage({ params }: Props) {
         {/* 2. Hero Section */}
         <section className="relative overflow-hidden bg-gradient-to-b from-navy-950 via-navy-900 to-navy-950 py-16 text-white sm:py-20 lg:py-24">
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#059669_1px,transparent_1px)] [background-size:16px_16px]" />
-          
+
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* Breadcrumb */}
             <nav className="mb-6 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-400 sm:text-sm">
@@ -193,11 +193,6 @@ export default async function ServiceDetailPage({ params }: Props) {
                       className="object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-950/20 to-transparent" />
-                    <div className="absolute top-4 right-4">
-                      <span className="rounded-full bg-navy-950/80 backdrop-blur-md px-3 py-1 text-xs font-semibold text-mint-400 border border-mint-500/30">
-                        SmileLab CAD/CAM
-                      </span>
-                    </div>
                   </div>
 
                   <div className="p-6">

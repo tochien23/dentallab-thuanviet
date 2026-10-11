@@ -56,12 +56,6 @@ export default function ServicesSection() {
                       className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-navy-950/70 via-transparent to-transparent" />
-                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-navy-900/85 px-2.5 py-1 text-xs font-semibold text-white shadow-sm backdrop-blur-sm">
-                        <IconComponent className="h-3.5 w-3.5 text-mint-400" />
-                        SmileLab CAD/CAM
-                      </span>
-                    </div>
                   </div>
 
                   {/* Content */}

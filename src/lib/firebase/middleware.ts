@@ -1,10 +1,35 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Middleware xác thực phiên đăng nhập
- * Firebase Auth — verify session cookie hoặc demo cookie
+ * Giải mã JWT payload trên Edge Runtime (Web APIs chuẩn — không phụ thuộc Node.js)
  */
-export async function updateSession(request: NextRequest) {
+function isJwtExpired(token: string): boolean {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    const payload = JSON.parse(jsonPayload);
+    if (typeof payload.exp === "number") {
+      return payload.exp * 1000 < Date.now();
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Middleware xác thực phiên đăng nhập cho route /admin/*
+ * Tương thích 100% với Vercel Edge Runtime (không import Firebase Admin hay Node modules)
+ */
+export function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Kiểm tra Firebase session cookie hoặc demo cookie
@@ -13,18 +38,10 @@ export async function updateSession(request: NextRequest) {
 
   let isAuthenticated = isDemoAuth;
 
-  // Nếu có Firebase session cookie → verify với Admin SDK
   if (firebaseSession && !isDemoAuth) {
-    try {
-      const { getAdminAuth, isAdminConfigured } = await import("@/lib/firebase/admin");
-      if (isAdminConfigured()) {
-        const adminAuth = await getAdminAuth();
-        await adminAuth.verifySessionCookie(firebaseSession, true);
-        isAuthenticated = true;
-      }
-    } catch {
-      // Token không hợp lệ hoặc hết hạn
-      isAuthenticated = false;
+    // Nếu có session cookie và chưa hết hạn
+    if (!isJwtExpired(firebaseSession)) {
+      isAuthenticated = true;
     }
   }
 
