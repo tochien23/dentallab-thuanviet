@@ -32,8 +32,8 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
-  /** Nếu có, chỉ role này mới thấy mục menu */
-  requiredRole?: UserRole;
+  /** Danh sách các role được phép nhìn thấy mục này */
+  allowedRoles?: UserRole[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -44,24 +44,9 @@ const NAV_ITEMS: NavItem[] = [
     exact: true,
   },
   {
-    href: "/admin/patients",
-    label: "Khách hàng / Bệnh nhân",
-    icon: Users,
-  },
-  {
     href: "/admin/treatments",
     label: "Hồ sơ Ca điều trị",
     icon: ClipboardList,
-  },
-  {
-    href: "/admin/clinics",
-    label: "Phòng khám / Đối tác",
-    icon: Building2,
-  },
-  {
-    href: "/admin/teeth",
-    label: "Chi tiết răng phục hình",
-    icon: Sparkles,
   },
   {
     href: "/admin/warranties",
@@ -69,15 +54,28 @@ const NAV_ITEMS: NavItem[] = [
     icon: ShieldCheck,
   },
   {
+    href: "/admin/patients",
+    label: "Khách hàng / Bệnh nhân",
+    icon: Users,
+    allowedRoles: ["admin", "staff"], // Kỹ thuật viên không xem danh bạ khách hàng
+  },
+  {
+    href: "/admin/clinics",
+    label: "Phòng khám / Đối tác",
+    icon: Building2,
+    allowedRoles: ["admin", "staff"],
+  },
+  {
     href: "/admin/consultations",
     label: "Yêu cầu tư vấn",
     icon: MessageSquareHeart,
+    allowedRoles: ["admin", "staff"],
   },
   {
     href: "/admin/users",
     label: "Quản lý tài khoản",
     icon: UserCog,
-    requiredRole: "admin",
+    allowedRoles: ["admin"],
   },
 ];
 
@@ -87,11 +85,21 @@ export default function AdminSidebar({
   onLogout,
 }: AdminSidebarProps) {
   const pathname = usePathname();
-  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    full_name: string;
+    email: string;
+    role: UserRole;
+  } | null>(null);
 
   useEffect(() => {
     authService.getCurrentUser().then((user) => {
-      if (user) setCurrentRole(user.role as UserRole);
+      if (user) {
+        setCurrentUser({
+          full_name: user.full_name,
+          email: user.email,
+          role: user.role as UserRole,
+        });
+      }
     });
   }, []);
 
@@ -100,10 +108,12 @@ export default function AdminSidebar({
     return pathname.startsWith(href);
   };
 
-  // Lọc menu theo quyền
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.requiredRole || item.requiredRole === currentRole
-  );
+  // Lọc menu theo quyền: nếu chưa load role thì mặc định hiện menu cơ bản hoặc theo role hiện tại
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!item.allowedRoles) return true;
+    if (!currentUser) return item.allowedRoles.includes("admin");
+    return item.allowedRoles.includes(currentUser.role);
+  });
 
   return (
     <>
@@ -209,23 +219,38 @@ export default function AdminSidebar({
         <div className="border-t border-navy-800/80 p-4 bg-navy-900/60">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-mint-500/20 text-mint-400 font-bold text-xs">
-                AD
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-mint-500/20 text-mint-400 font-bold text-xs uppercase">
+                {currentUser?.full_name ? currentUser.full_name.charAt(0) : "U"}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold text-white">
-                  Quản Trị Viên
+                  {currentUser?.full_name || "Quản Trị Viên"}
                 </p>
-                <p className="truncate text-[11px] text-slate-400">
-                  {CLINIC_INFO.email}
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`inline-block text-[10px] px-1.5 py-0.2 rounded font-semibold uppercase ${
+                    currentUser?.role === "technician"
+                      ? "bg-amber-500/20 text-amber-300"
+                      : currentUser?.role === "staff"
+                      ? "bg-blue-500/20 text-blue-300"
+                      : "bg-mint-500/20 text-mint-300"
+                  }`}>
+                    {currentUser?.role === "technician"
+                      ? "KTV Labo"
+                      : currentUser?.role === "staff"
+                      ? "Nhân viên"
+                      : "Admin"}
+                  </span>
+                  <span className="truncate text-[11px] text-slate-400">
+                    {currentUser?.email || CLINIC_INFO.email}
+                  </span>
+                </div>
               </div>
             </div>
 
             <button
               onClick={onLogout}
               title="Đăng xuất"
-              className="rounded-lg p-2 text-slate-400 hover:bg-navy-800 hover:text-rose-400 transition-colors"
+              className="rounded-lg p-2 text-slate-400 hover:bg-navy-800 hover:text-rose-400 transition-colors cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
             </button>

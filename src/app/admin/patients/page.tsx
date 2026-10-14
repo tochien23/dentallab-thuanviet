@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -11,8 +12,12 @@ import {
   Trash2,
   Phone,
   MapPin,
+  Eye,
+  FileSpreadsheet,
+  ShieldAlert,
   X,
 } from "lucide-react";
+import { exportPatientsToExcel } from "@/lib/exportUtils";
 import AdminLayoutWrapper from "@/components/admin/AdminLayoutWrapper";
 import LoadingSkeleton from "@/components/admin/LoadingSkeleton";
 import EmptyState from "@/components/admin/EmptyState";
@@ -20,13 +25,15 @@ import Pagination from "@/components/admin/Pagination";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import { useToast } from "@/components/admin/ToastContext";
 import { patientService } from "@/services/patientService";
-import { Patient } from "@/types/database.types";
+import { authService } from "@/services/authService";
+import { Patient, UserRole } from "@/types/database.types";
 import { patientFormSchema, PatientFormValues } from "@/lib/validations/patient";
 
 const PAGE_SIZE = 8;
 
 export default function PatientsAdminPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,8 +61,12 @@ export default function PatientsAdminPage() {
   const loadPatients = useCallback(async (query?: string) => {
     try {
       setLoading(true);
-      const data = await patientService.getAllPatients(query);
+      const [data, user] = await Promise.all([
+        patientService.getAllPatients(query),
+        authService.getCurrentUser(),
+      ]);
       setPatients(data);
+      if (user) setCurrentRole(user.role as UserRole);
     } catch {
       error("Lỗi", "Không thể tải danh sách bệnh nhân.");
     } finally {
@@ -153,6 +164,48 @@ export default function PatientsAdminPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    if (patients.length === 0) {
+      error("Thông báo", "Không có dữ liệu bệnh nhân nào để xuất.");
+      return;
+    }
+    try {
+      exportPatientsToExcel(patients);
+      success("Xuất file thành công", `Đã tải về danh sách ${patients.length} bệnh nhân.`);
+    } catch {
+      error("Lỗi xuất file", "Đã có sự cố khi tạo file Excel.");
+    }
+  };
+
+  if (currentRole === "technician") {
+    return (
+      <AdminLayoutWrapper
+        title="Quản lý Bệnh nhân & Khách hàng"
+        subtitle="Hệ thống bảo vệ quyền riêng tư và thông tin y tế bệnh nhân."
+      >
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-8 text-center max-w-xl mx-auto my-12 shadow-xs">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 mb-4">
+            <ShieldAlert className="h-8 w-8" />
+          </div>
+          <h2 className="text-base font-bold text-navy-950">
+            Hạn chế quyền truy cập danh bạ bệnh nhân
+          </h2>
+          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            Tài khoản của bạn thuộc vai trò <strong>Kỹ thuật viên Labo (Technician)</strong>. Để bảo vệ dữ liệu cá nhân của khách hàng, bạn không được phân quyền tiếp cận số điện thoại và danh bạ bệnh nhân. Vui lòng làm việc tại mục Hồ sơ ca điều trị và Thẻ bảo hành.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href="/admin/treatments"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-navy-950 px-4 py-2.5 text-xs font-semibold text-white shadow-md hover:bg-navy-900 transition-all"
+            >
+              Chuyển đến Hồ sơ Ca điều trị
+            </Link>
+          </div>
+        </div>
+      </AdminLayoutWrapper>
+    );
+  }
+
   return (
     <AdminLayoutWrapper
       title="Quản lý Bệnh nhân & Khách hàng"
@@ -172,13 +225,25 @@ export default function PatientsAdminPage() {
             />
           </form>
 
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-navy-950/20 hover:bg-navy-900 transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm bệnh nhân mới
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-100 hover:border-emerald-300 transition-all cursor-pointer"
+              title="Xuất danh sách bệnh nhân hiện tại ra file Excel"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              Xuất Excel ({patients.length})
+            </button>
+
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-navy-950/20 hover:bg-navy-900 transition-all cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm bệnh nhân mới
+            </button>
+          </div>
         </div>
 
         {/* Content table */}
@@ -211,11 +276,19 @@ export default function PatientsAdminPage() {
                     <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-4 px-4 sm:px-6">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy-50 font-bold text-navy-800 text-xs">
+                          <Link
+                            href={`/admin/patients/${p.id}`}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy-50 font-bold text-navy-800 text-xs hover:bg-mint-100 hover:text-navy-950 transition-colors"
+                          >
                             {p.full_name.charAt(0)}
-                          </div>
+                          </Link>
                           <div>
-                            <p className="font-semibold text-navy-950">{p.full_name}</p>
+                            <Link
+                              href={`/admin/patients/${p.id}`}
+                              className="font-semibold text-navy-950 hover:text-mint-600 transition-colors flex items-center gap-1.5"
+                            >
+                              {p.full_name}
+                            </Link>
                             <span className="font-mono text-xs text-slate-500">{p.patient_code}</span>
                           </div>
                         </div>
@@ -251,17 +324,24 @@ export default function PatientsAdminPage() {
                       </td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/admin/patients/${p.id}`}
+                            title="Xem chi tiết hồ sơ điều trị & bảo hành"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-mint-50 hover:text-navy-950 transition-colors"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Link>
                           <button
                             onClick={() => openEditModal(p)}
                             title="Sửa thông tin"
-                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-navy-900 transition-colors"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-navy-900 transition-colors cursor-pointer"
                           >
                             <Edit2 className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => setDeletingPatient(p)}
                             title="Xóa hồ sơ"
-                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

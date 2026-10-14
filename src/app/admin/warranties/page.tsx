@@ -21,7 +21,9 @@ import {
   QrCode,
   Printer,
   Eye,
+  FileSpreadsheet,
 } from "lucide-react";
+import { exportWarrantiesToExcel } from "@/lib/exportUtils";
 import AdminLayoutWrapper from "@/components/admin/AdminLayoutWrapper";
 import LoadingSkeleton from "@/components/admin/LoadingSkeleton";
 import EmptyState from "@/components/admin/EmptyState";
@@ -315,6 +317,19 @@ export default function WarrantiesAdminPage() {
     setPrintingWarranty(getPublicWarrantyFromDetails(w));
   };
 
+  const handleExportExcel = () => {
+    if (warranties.length === 0) {
+      error("Thông báo", "Không có dữ liệu thẻ bảo hành nào để xuất.");
+      return;
+    }
+    try {
+      exportWarrantiesToExcel(warranties);
+      success("Xuất file thành công", `Đã tải về danh sách ${warranties.length} thẻ bảo hành.`);
+    } catch {
+      error("Lỗi xuất file", "Đã có sự cố khi tạo file Excel.");
+    }
+  };
+
   return (
     <AdminLayoutWrapper
       title="Quản Lý Thẻ Bảo Hành Điện Tử"
@@ -363,8 +378,18 @@ export default function WarrantiesAdminPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-100 hover:border-emerald-300 transition-all cursor-pointer"
+              title="Xuất danh sách thẻ bảo hành hiện tại ra file Excel"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              Xuất Excel ({warranties.length})
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsSearchLookupOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-navy-950 shadow-xs hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-navy-950 shadow-xs hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer"
             >
               <Search className="h-4 w-4 text-mint-600" />
               Tra cứu thẻ (In phiếu)

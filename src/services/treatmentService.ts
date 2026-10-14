@@ -110,6 +110,48 @@ export const treatmentService = {
   },
 
   /**
+   * Lấy danh sách ca điều trị theo mã ID bệnh nhân
+   */
+  async getTreatmentsByPatientId(patientId: string): Promise<TreatmentWithDetails[]> {
+    if (isFirebaseConfigured()) {
+      try {
+        const { collection, getDocs, query: fbQuery, where } = await import("firebase/firestore");
+        const q = fbQuery(collection(db, "treatments"), where("patient_id", "==", patientId));
+        const snapshot = await getDocs(q);
+        const results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Treatment));
+        results.sort((a, b) => new Date(b.treatment_date).getTime() - new Date(a.treatment_date).getTime());
+
+        const enriched = await Promise.all(
+          results.map(async (t) => {
+            const { doc, getDoc } = await import("firebase/firestore");
+            const [patientSnap, clinicSnap] = await Promise.all([
+              getDoc(doc(db, "patients", t.patient_id)),
+              getDoc(doc(db, "clinics", t.clinic_id)),
+            ]);
+            return {
+              ...t,
+              patient: patientSnap.exists() ? ({ id: patientSnap.id, ...patientSnap.data() } as Patient) : undefined,
+              clinic: clinicSnap.exists() ? ({ id: clinicSnap.id, ...clinicSnap.data() } as Clinic) : undefined,
+            };
+          })
+        );
+        return enriched;
+      } catch (err) {
+        console.warn("[treatmentService] Lỗi lấy treatments theo patient_id:", err);
+      }
+    }
+
+    return localTreatments
+      .filter((t) => t.patient_id === patientId)
+      .map((t) => ({
+        ...t,
+        patient: MOCK_PATIENTS.find((p) => p.id === t.patient_id),
+        clinic: MOCK_CLINICS.find((c) => c.id === t.clinic_id),
+      }))
+      .sort((a, b) => new Date(b.treatment_date).getTime() - new Date(a.treatment_date).getTime());
+  },
+
+  /**
    * Tạo ca điều trị mới
    */
   async createTreatment(

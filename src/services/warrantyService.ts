@@ -244,6 +244,51 @@ export const warrantyService = {
   },
 
   /**
+   * Lấy danh sách thẻ bảo hành theo mã ID bệnh nhân
+   */
+  async getWarrantiesByPatientId(patientId: string): Promise<WarrantyWithDetails[]> {
+    if (isFirebaseConfigured()) {
+      try {
+        const { collection, getDocs, query: fbQuery, where } = await import("firebase/firestore");
+        const q = fbQuery(collection(db, "warranties"), where("patient_id", "==", patientId));
+        const snapshot = await getDocs(q);
+        const results = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Warranty));
+        results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        const { doc, getDoc } = await import("firebase/firestore");
+        const enriched = await Promise.all(
+          results.map(async (w) => {
+            const [patientSnap, treatmentSnap, toothSnap] = await Promise.all([
+              w.patient_id ? getDoc(doc(db, "patients", w.patient_id)) : Promise.resolve(null),
+              w.treatment_id ? getDoc(doc(db, "treatments", w.treatment_id)) : Promise.resolve(null),
+              w.tooth_id ? getDoc(doc(db, "teeth", w.tooth_id)) : Promise.resolve(null),
+            ]);
+            return {
+              ...w,
+              patient: patientSnap?.exists() ? ({ id: patientSnap.id, ...patientSnap.data() } as Patient) : undefined,
+              treatment: treatmentSnap?.exists() ? ({ id: treatmentSnap.id, ...treatmentSnap.data() } as Treatment) : undefined,
+              tooth: toothSnap?.exists() ? ({ id: toothSnap.id, ...toothSnap.data() } as Tooth) : undefined,
+            };
+          })
+        );
+        return enriched;
+      } catch (err) {
+        console.warn("[warrantyService] Lỗi lấy warranties theo patient_id:", err);
+      }
+    }
+
+    return localWarranties
+      .filter((w) => w.patient_id === patientId)
+      .map((w) => ({
+        ...w,
+        patient: MOCK_PATIENTS.find((p) => p.id === w.patient_id),
+        treatment: MOCK_TREATMENTS.find((t) => t.id === w.treatment_id),
+        tooth: MOCK_TEETH.find((th) => th.id === w.tooth_id),
+      }))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  },
+
+  /**
    * Cấp mới thẻ bảo hành
    */
   async createWarranty(
